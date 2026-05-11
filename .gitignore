@@ -1,0 +1,25 @@
+# Python virtual environment
+venv/
+
+# Compiled Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Output and processed files (real patient data — never commit)
+D:/Medical Aid/Files/Output/
+D:/Medical Aid/Files/Processed/
+
+# Debug scripts
+debug.py
+debug2.py
+
+# Environment variables (for future use)
+.env
+
+# VSCode settings
+.vscode/
+
+# Windows
+Thumbs.db
+Desktop.ini

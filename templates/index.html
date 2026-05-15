@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Medical Aid Reconciliation — Habelite</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      max-width: 620px;
+      width: 100%;
+      padding: 2.5rem;
+    }
+
+    .logo-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.75rem;
+    }
+
+    .logo-bar .brand {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #1F4E79;
+    }
+
+    .logo-bar .sub {
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 2px;
+    }
+
+    h1 {
+      font-size: 1.25rem;
+      color: #1F4E79;
+      margin-bottom: 0.4rem;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #555;
+      margin-bottom: 2rem;
+      line-height: 1.5;
+    }
+
+    .field { margin-bottom: 1.5rem; }
+
+    label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #333;
+      margin-bottom: 0.4rem;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: #777;
+      margin-bottom: 0.5rem;
+    }
+
+    .drop-zone {
+      border: 2px dashed #90b8d8;
+      border-radius: 8px;
+      padding: 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      background: #f7fbff;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: #1F4E79;
+      background: #eaf3fb;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-zone .icon { font-size: 2rem; margin-bottom: 0.4rem; }
+
+    .drop-zone .dz-label {
+      font-size: 0.9rem;
+      color: #1F4E79;
+      font-weight: 600;
+    }
+
+    .drop-zone .dz-sub {
+      font-size: 0.78rem;
+      color: #888;
+      margin-top: 0.2rem;
+    }
+
+    .file-list {
+      margin-top: 0.6rem;
+      font-size: 0.82rem;
+      color: #444;
+      text-align: left;
+    }
+
+    .file-list span {
+      display: inline-block;
+      background: #e8f0fe;
+      border-radius: 4px;
+      padding: 2px 8px;
+      margin: 2px 3px;
+      color: #1F4E79;
+    }
+
+    .btn-run {
+      display: block;
+      width: 100%;
+      padding: 0.9rem;
+      background: #1F4E79;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: 0.5rem;
+    }
+
+    .btn-run:hover { background: #163a5c; }
+    .btn-run:disabled { background: #90b8d8; cursor: not-allowed; }
+
+    .spinner {
+      display: none;
+      text-align: center;
+      margin-top: 1rem;
+      color: #1F4E79;
+      font-size: 0.9rem;
+    }
+
+    .spinner.active { display: block; }
+
+    .alert {
+      padding: 0.8rem 1rem;
+      border-radius: 6px;
+      margin-bottom: 1.25rem;
+      font-size: 0.88rem;
+    }
+
+    .alert.error {
+      background: #fdecea;
+      color: #b71c1c;
+      border-left: 4px solid #e53935;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #e8ecf0;
+      margin: 1.75rem 0;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 0.78rem;
+      color: #aaa;
+      margin-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <div class="logo-bar">
+    <div>
+      <div class="brand">Habelite</div>
+      <div class="sub">Secure AML, Compliance and AI Enablement</div>
+    </div>
+  </div>
+
+  <h1>Medical Aid Reconciliation</h1>
+  <p class="subtitle">
+    Upload your Client Data spreadsheet and the remittance PDFs from your
+    medical aids. The bot will match, classify, and produce a reconciliation
+    report you can download instantly.
+  </p>
+
+  {% for msg in get_flashed_messages(category_filter=["error"]) %}
+  <div class="alert error">⚠ {{ msg }}</div>
+  {% endfor %}
+
+  <form method="POST" action="/run" enctype="multipart/form-data" id="recon-form">
+
+    <!-- Excel upload -->
+    <div class="field">
+      <label>1. Client Data Spreadsheet</label>
+      <p class="hint">Your practice Excel file — Client Data.xlsx</p>
+      <div class="drop-zone" id="excel-zone">
+        <input type="file" name="excel_file" id="excel-input"
+               accept=".xlsx,.xls" required />
+        <div class="icon">📊</div>
+        <div class="dz-label">Click to select or drag and drop</div>
+        <div class="dz-sub">Excel files only (.xlsx, .xls)</div>
+      </div>
+      <div class="file-list" id="excel-list"></div>
+    </div>
+
+    <!-- PDF upload -->
+    <div class="field">
+      <label>2. Remittance Advice PDFs</label>
+      <p class="hint">Select all remittance PDFs at once — you can pick multiple files.</p>
+      <div class="drop-zone" id="pdf-zone">
+        <input type="file" name="pdf_files" id="pdf-input"
+               accept=".pdf" multiple required />
+        <div class="icon">📄</div>
+        <div class="dz-label">Click to select or drag and drop</div>
+        <div class="dz-sub">PDF files only — select multiple at once</div>
+      </div>
+      <div class="file-list" id="pdf-list"></div>
+    </div>
+
+    <hr class="divider"/>
+
+    <button type="submit" class="btn-run" id="run-btn">
+      ▶ Run Reconciliation
+    </button>
+
+    <div class="spinner" id="spinner">
+      ⏳ Processing — please wait, this may take up to 30 seconds...
+    </div>
+
+  </form>
+
+  <div class="footer">
+    Habelite Medical Aid Recon Bot &nbsp;·&nbsp; v1.0 &nbsp;·&nbsp;
+    Patient data is not stored after processing.
+  </div>
+</div>
+
+<script>
+  // Show filenames in the list below each zone
+  function showFileList(files, listId) {
+    const list = document.getElementById(listId);
+    list.innerHTML = "";
+    Array.from(files).forEach(f => {
+      const span = document.createElement("span");
+      span.textContent = f.name;
+      list.appendChild(span);
+    });
+  }
+
+  // Wire a drop zone: handle both click-to-browse and drag-and-drop
+  function wireZone(zoneId, inputId, listId, multiple) {
+    const zone  = document.getElementById(zoneId);
+    const input = document.getElementById(inputId);
+
+    // Click-to-browse — already works via the hidden input, just update list
+    input.addEventListener("change", () => {
+      showFileList(input.files, listId);
+    });
+
+    // Drag styling
+    zone.addEventListener("dragenter", e => {
+      e.preventDefault();
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragover", e => {
+      e.preventDefault();
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragleave", e => {
+      // Only remove if leaving the zone itself, not a child element
+      if (!zone.contains(e.relatedTarget)) {
+        zone.classList.remove("drag-over");
+      }
+    });
+
+    // Drop — assign dropped files directly to the input
+    zone.addEventListener("drop", e => {
+      e.preventDefault();
+      zone.classList.remove("drag-over");
+
+      const dropped = e.dataTransfer.files;
+      if (!dropped || dropped.length === 0) return;
+
+      // Filter to expected types
+      const ext    = multiple ? ".pdf" : ".xlsx,.xls";
+      const allowed = multiple
+        ? f => f.name.toLowerCase().endsWith(".pdf")
+        : f => f.name.toLowerCase().endsWith(".xlsx")
+             || f.name.toLowerCase().endsWith(".xls");
+
+      const filtered = Array.from(dropped).filter(allowed);
+      if (filtered.length === 0) {
+        alert("Please drop " + (multiple ? "PDF files only." : "an Excel file (.xlsx) only."));
+        return;
+      }
+
+      // Assign to the file input via DataTransfer
+      const dt = new DataTransfer();
+      filtered.forEach(f => dt.items.add(f));
+      input.files = dt.files;
+
+      showFileList(input.files, listId);
+    });
+  }
+
+  wireZone("excel-zone", "excel-input", "excel-list", false);
+  wireZone("pdf-zone",   "pdf-input",   "pdf-list",   true);
+
+  // Spinner on submit
+  document.getElementById("recon-form").addEventListener("submit", () => {
+    document.getElementById("run-btn").disabled = true;
+    document.getElementById("spinner").classList.add("active");
+  });
+</script>
+</body>
+</html>

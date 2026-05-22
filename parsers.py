@@ -8,9 +8,9 @@ import pdfplumber
 import pandas as pd
 from datetime import datetime
 from config import (EXCEL_CLAIMS, COL_DATE, COL_PAYER, COL_MEMBER_NAME,
-                    COL_CLAIM_REF, COL_CLAIMED_USD, COL_REMITTED_USD,
-                    COL_DISCREPANCY, COL_REASON, COL_STATUS,
-                    COL_PATIENT_ID, COL_PHONE)
+                    COL_MEMBER_NUMBER, COL_CLAIM_REF, COL_CLAIMED_USD,
+                    COL_REMITTED_USD, COL_DISCREPANCY, COL_REASON,
+                    COL_STATUS, COL_PATIENT_ID, COL_PHONE)
 
 
 # ── Helpers ───────────────────────────────────────────────────
@@ -81,7 +81,8 @@ def load_excel_claims():
             "reason"      : str(row.get(COL_REASON, "")).strip(),
             "status"      : str(row.get(COL_STATUS, "")).strip(),
             "patient_id"  : str(row.get(COL_PATIENT_ID, "")).strip(),
-            "phone"       : str(row.get(COL_PHONE, "")).strip(),
+            "member_number": str(row.get(COL_MEMBER_NUMBER, "")).strip().upper(),
+            "phone"        : str(row.get(COL_PHONE, "")).strip(),
             "matched"     : False,
         })
     return claims

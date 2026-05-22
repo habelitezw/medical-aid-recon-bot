@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reason Code Manager — Habelite Recon</title>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        background: #f0f4f8;
+        padding: 2rem;
+      }
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+      }
+      .topbar h1 {
+        font-size: 1.3rem;
+        color: #1f4e79;
+      }
+      .topbar a {
+        font-size: 0.85rem;
+        color: #666;
+        text-decoration: none;
+      }
+      .topbar a:hover {
+        color: #1f4e79;
+      }
+      .card {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+      }
+      .card h2 {
+        font-size: 1rem;
+        color: #1f4e79;
+        margin-bottom: 1rem;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+      label {
+        display: block;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: #444;
+        margin-bottom: 0.25rem;
+      }
+      input[type="text"],
+      select,
+      textarea {
+        width: 100%;
+        padding: 0.55rem 0.75rem;
+        border: 1.5px solid #ccc;
+        border-radius: 6px;
+        font-size: 0.88rem;
+        font-family: inherit;
+      }
+      textarea {
+        resize: vertical;
+        min-height: 60px;
+      }
+      .btn-add {
+        padding: 0.6rem 1.4rem;
+        background: #1f4e79;
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.88rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .btn-add:hover {
+        background: #163a5c;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+      }
+      th {
+        background: #1f4e79;
+        color: #fff;
+        padding: 0.6rem 0.75rem;
+        text-align: left;
+        font-weight: 600;
+      }
+      td {
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid #e8ecf0;
+        vertical-align: top;
+      }
+      tr:nth-child(even) td {
+        background: #f7fbff;
+      }
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.78rem;
+        font-weight: 600;
+      }
+      .badge-tariff {
+        background: #fff2cc;
+        color: #7d6300;
+      }
+      .badge-benefit {
+        background: #fce4d6;
+        color: #922b21;
+      }
+      .badge-covered {
+        background: #fce4d6;
+        color: #922b21;
+      }
+      .badge-error {
+        background: #fff2cc;
+        color: #7d6300;
+      }
+      .badge-other {
+        background: #deeaf1;
+        color: #1f4e79;
+      }
+      .btn-del {
+        padding: 3px 10px;
+        background: #e53935;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.78rem;
+      }
+      .btn-del:hover {
+        background: #b71c1c;
+      }
+      .alert {
+        padding: 0.7rem 1rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+      }
+      .alert.success {
+        background: #e2efda;
+        color: #1a5e20;
+        border-left: 4px solid #43a047;
+      }
+      .alert.error {
+        background: #fdecea;
+        color: #b71c1c;
+        border-left: 4px solid #e53935;
+      }
+      .aid-filter {
+        margin-bottom: 1rem;
+      }
+      .aid-filter select {
+        width: auto;
+        min-width: 200px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <h1>⚙ Reason Code Manager</h1>
+      <div>
+        <a href="/">← Back to reconciliation</a>
+        &nbsp;&nbsp;
+        <a href="/admin/logout">Sign out</a>
+      </div>
+    </div>
+
+    {% for msg in get_flashed_messages(category_filter=["success"]) %}
+    <div class="alert success">✓ {{ msg }}</div>
+    {% endfor %} {% for msg in get_flashed_messages(category_filter=["error"])
+    %}
+    <div class="alert error">⚠ {{ msg }}</div>
+    {% endfor %}
+
+    <!-- Add new code -->
+    <div class="card">
+      <h2>Add New Reason Code</h2>
+      <form method="POST" action="/codes/add">
+        <div class="grid">
+          <div>
+            <label>Reason Code *</label>
+            <input
+              type="text"
+              name="code"
+              placeholder="e.g. 6, 40, ERR"
+              required
+            />
+          </div>
+          <div>
+            <label>Medical Aid *</label>
+            <select name="medical_aid">
+              <option value="ALL">ALL (applies to all aids)</option>
+              {% for aid in aids %}
+              <option value="{{ aid }}">{{ aid }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>Classification *</label>
+            <select name="classification">
+              {% for cls in classifications %}
+              <option value="{{ cls }}">{{ cls }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom: 0.75rem">
+          <label>Description (plain English explanation of the code) *</label>
+          <input
+            type="text"
+            name="description"
+            placeholder="e.g. Amount claimed exceeds tariff amount"
+            required
+          />
+        </div>
+        <div style="margin-bottom: 0.75rem">
+          <label>Action Required (what the practice should do)</label>
+          <input
+            type="text"
+            name="action"
+            placeholder="e.g. Assess: write off or bill patient for difference"
+          />
+        </div>
+        <button class="btn-add" type="submit">+ Add Code</button>
+      </form>
+    </div>
+
+    <!-- Existing codes table -->
+    <div class="card">
+      <h2>Configured Reason Codes ({{ codes|length }})</h2>
+
+      <div class="aid-filter">
+        <label>Filter by medical aid:</label>
+        <select id="aid-filter" onchange="filterTable()">
+          <option value="ALL_SHOW">Show all</option>
+          {% for aid in aids %}
+          <option value="{{ aid }}">{{ aid }}</option>
+          {% endfor %}
+          <option value="ALL">ALL (applies to all aids)</option>
+        </select>
+      </div>
+
+      <table id="codes-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Medical Aid</th>
+            <th>Description</th>
+            <th>Classification</th>
+            <th>Action Required</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for code in codes %}
+          <tr data-aid="{{ code.medical_aid }}">
+            <td><strong>{{ code.code }}</strong></td>
+            <td>{{ code.medical_aid }}</td>
+            <td>{{ code.description }}</td>
+            <td>
+              <span
+                class="badge {% if 'tariff' in code.classification.lower() %}badge-tariff {% elif 'exhausted' in code.classification.lower() %}badge-benefit {% elif 'covered' in code.classification.lower() %}badge-covered {% elif 'error' in code.classification.lower() or 'duplicate' in code.classification.lower() %}badge-error {% else %}badge-other{% endif %}"
+              >
+                {{ code.classification }}
+              </span>
+            </td>
+            <td>{{ code.action }}</td>
+            <td>
+              <form
+                method="POST"
+                action="/codes/delete/{{ loop.index0 }}"
+                onsubmit="return confirm('Delete this code?');"
+              >
+                <button class="btn-del" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <script>
+      function filterTable() {
+        const val = document.getElementById("aid-filter").value;
+        const rows = document.querySelectorAll("#codes-table tbody tr");
+        rows.forEach((row) => {
+          row.style.display =
+            val === "ALL_SHOW" || row.dataset.aid === val ? "" : "none";
+        });
+      }
+    </script>
+  </body>
+</html>

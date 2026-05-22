@@ -1,0 +1,81 @@
+{
+  "codes": [
+    {
+      "code": "6",
+      "medical_aid": "First Mutual Health",
+      "description": "Amount claimed exceeds tariff amount",
+      "classification": "Tariff difference",
+      "action": "Assess: write off or bill patient for difference"
+    },
+    {
+      "code": "6",
+      "medical_aid": "Bonvie",
+      "description": "Amount claimed exceeds tariff amount",
+      "classification": "Tariff difference",
+      "action": "Assess: write off or bill patient for difference"
+    },
+    {
+      "code": "6",
+      "medical_aid": "Cimas",
+      "description": "Amount claimed exceeds tariff amount",
+      "classification": "Tariff difference",
+      "action": "Assess: write off or bill patient for difference"
+    },
+    {
+      "code": "9",
+      "medical_aid": "FLIMAS",
+      "description": "Levies, co-payments, scheme exclusions and discounts applied as applicable",
+      "classification": "Scheme exclusion / co-payment",
+      "action": "Contact patient — patient liable for shortfall amount"
+    },
+    {
+      "code": "409",
+      "medical_aid": "CellMed",
+      "description": "No units left on matching authorisation",
+      "classification": "Benefit exhausted",
+      "action": "Contact patient — patient liable for shortfall amount"
+    },
+    {
+      "code": "416",
+      "medical_aid": "CellMed",
+      "description": "Benefit from matching authorisation was used",
+      "classification": "Benefit exhausted",
+      "action": "Contact patient — patient liable for shortfall amount"
+    },
+    {
+      "code": "40",
+      "medical_aid": "Cimas",
+      "description": "Duplicate claim — claim already processed",
+      "classification": "Duplicate / submission error",
+      "action": "Review claim records — do not resubmit"
+    },
+    {
+      "code": "D",
+      "medical_aid": "ALL",
+      "description": "Benefits exhausted",
+      "classification": "Benefit exhausted",
+      "action": "Contact patient — patient liable for shortfall amount"
+    },
+    {
+      "code": "E",
+      "medical_aid": "ALL",
+      "description": "Not a covered benefit under this plan",
+      "classification": "Not a covered benefit",
+      "action": "Contact patient — patient liable for full amount"
+    },
+    {
+      "code": "NC",
+      "medical_aid": "ALL",
+      "description": "Not covered",
+      "classification": "Not a covered benefit",
+      "action": "Contact patient — patient liable for full amount"
+    },
+    {
+      "code": "ERR",
+      "medical_aid": "ALL",
+      "description": "Claim submission error — incorrect member details",
+      "classification": "Data / submission error",
+      "action": "Correct the error in the claim record and resubmit"
+    }
+  ]
+}

@@ -3,6 +3,7 @@
 # Supports: FMH, Cimas, FLIMAS, Bonvie, CellMed, Alliance
 # =============================================================
 
+import os
 import re
 import pdfplumber
 import pandas as pd
@@ -650,6 +651,10 @@ def parse_remittance(pdf_path, medical_aid_name):
     elif "alliance" in name:
         return parse_alliance(pdf_path)
     else:
-        # Unknown aid — log a warning and return empty
-        # rather than guessing with the old generic parser
-        return []
+        # Unknown aid — attempt Alliance-style parse then raise
+        # so the error gets logged in the Error Log tab
+        raise ValueError(
+            f"No parser configured for medical aid: '{medical_aid_name}'. "
+            f"File: {os.path.basename(pdf_path)}. "
+            f"Add this aid to MEDICAL_AID_MAP in config.py and implement a parser."
+        )

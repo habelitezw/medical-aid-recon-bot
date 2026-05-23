@@ -37,6 +37,7 @@ MEDICAL_AID_MAP = {
     "flimas"   : "FLIMAS",
     "fmh"      : "First Mutual Health",
     "psmas"    : "PSMAS",
+    "corrupt"  : "Unknown",
 }
 
 # ── Fuzzy match threshold ─────────────────────────────────────

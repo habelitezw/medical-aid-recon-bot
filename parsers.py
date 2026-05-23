@@ -515,28 +515,34 @@ def parse_cellmed(pdf_path):
 # merged None cell — we handle this by joining adjacent cells.
 
 def parse_alliance(pdf_path):
+    """
+    Parse an Alliance Health payment notice PDF.
+    Works with both real Alliance PDFs (which have a None merged cell
+    in the Member Name column) and synthetic test PDFs (which don't).
+    """
     transactions = []
-    sf_map       = {}   # shortfall code -> description
+    sf_map       = {}
 
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             tables = page.extract_tables()
 
-            # ShortFall code description table
+            # Build shortfall code description map
             for table in tables:
                 if not table:
                     continue
-                h = [str(c).strip().lower() if c else "" for c in table[0]]
+                h = [str(c).strip().lower() if c else ""
+                     for c in table[0]]
                 if "shortfall code" in h and "shortfall description" in h:
                     for row in table[1:]:
                         if row and len(row) >= 2 and row[0] and row[1]:
                             sf_map[str(row[0]).strip()] = str(row[1]).strip()
 
             for table in tables:
-                if not table or len(table) < 3:
+                if not table or len(table) < 2:
                     continue
 
-                # Find the header row — it contains "Claim Date"
+                # Find header row containing "claim date"
                 header_row_idx = None
                 for idx, row in enumerate(table):
                     if row and any("claim date" in str(c).lower()
@@ -546,9 +552,19 @@ def parse_alliance(pdf_path):
                 if header_row_idx is None:
                     continue
 
-                # Build column index map from header row
-                header = [str(c).strip().lower().replace("\n", " ")
-                          if c else "" for c in table[header_row_idx]]
+                # Build header list — collapse None cells into
+                # the previous header (handles merged cells)
+                raw_header = table[header_row_idx]
+                header = []
+                last   = ""
+                for c in raw_header:
+                    val = str(c).strip().lower().replace("\n", " ") if c else ""
+                    if val:
+                        last = val
+                        header.append(val)
+                    else:
+                        # None/empty = merged cell, repeat previous
+                        header.append(last + "_merged")
 
                 def col_idx(name):
                     for i, h in enumerate(header):
@@ -567,17 +583,17 @@ def parse_alliance(pdf_path):
                 idx_invoice   = col_idx("invoice")
                 idx_patient   = col_idx("patient")
 
-                # Member Name spans two columns (one is None header)
-                # We'll concatenate all non-empty cells between memberid and patient
-                # that don't match known column names
+                # Member name: collect cells between memberid and patient
                 def get_member_name(row):
-                    # Collect cells from after memberid up to patient column
                     if idx_memberid is None or idx_patient is None:
                         return ""
                     parts = []
                     for i in range(idx_memberid + 1, idx_patient):
                         v = str(row[i]).strip() if i < len(row) and row[i] else ""
-                        if v and v.lower() not in header:
+                        # Skip if it matches a known header keyword
+                        if v and not any(kw in v.lower() for kw in
+                                         ["member", "patient", "claimed",
+                                          "award", "shortfall", "diagnosis"]):
                             parts.append(v)
                     return " ".join(parts)
 
@@ -597,24 +613,35 @@ def parse_alliance(pdf_path):
 
                     claimed   = _safe_float(g(row_s, idx_claimed))
                     awarded   = _safe_float(g(row_s, idx_award))
-                    sf_amt    = _safe_float(g(row_s, idx_shortfall))
-                    if sf_amt == 0.0:
+                    sf_amt = _safe_float(g(row_s, idx_shortfall))
+                    # Always derive shortfall from claimed - awarded
+                    # to avoid column-shift errors in synthetic PDFs
+                    if claimed > 0 and awarded >= 0:
                         sf_amt = round(claimed - awarded, 2)
+                    sf_amt = max(sf_amt, 0.0)  # never negative
 
-                    reason_code = g(row_s, idx_sfcode)
+                    _raw_reason = g(row_s, idx_sfcode)
+                    reason_code = _raw_reason.replace("[", "").replace("]", "").strip()
                     reason_desc = sf_map.get(reason_code, "")
                     if not reason_desc and reason_code:
                         reason_desc = f"ShortFall code {reason_code} (see remittance)"
 
-                    # AFHOZ/Drugs column holds the tariff code in Alliance
-                    tariff_col = col_idx("afhoz")
+                    tariff_col  = col_idx("afhoz")
                     tariff_code = g(row_s, tariff_col) if tariff_col else ""
+
+                    member_name = get_member_name(row_s)
+                    patient     = g(row_s, idx_patient)
+
+                    # If member name is empty, fall back to patient name
+                    if not member_name:
+                        member_name = patient
 
                     transactions.append({
                         "source"        : "pdf",
                         "medical_aid"   : "Alliance Health",
-                        "member_name"   : get_member_name(row_s),
-                        "patient_name"  : g(row_s, idx_patient),
+                        "member_name"   : member_name,
+                        "patient_name"  : patient,
+                        "member_id"     : g(row_s, idx_memberid),
                         "treat_date"    : treat_date,
                         "invoice_num"   : g(row_s, idx_invoice),
                         "tariff_code"   : tariff_code,
@@ -625,17 +652,38 @@ def parse_alliance(pdf_path):
                         "reason_code"   : reason_code,
                         "reason_desc"   : reason_desc,
                         "claim_no"      : g(row_s, idx_claimno),
-                        "member_id"     : g(row_s, idx_memberid),
                         "diagnosis"     : g(row_s, idx_diagnosis),
                         "matched"       : False,
                     })
 
     return transactions
 
-
 # ── Dispatcher ────────────────────────────────────────────────
 
 def parse_remittance(pdf_path, medical_aid_name):
+    """Route to the correct parser based on medical aid name.
+    NOTE: alliance must be checked BEFORE cimas/fmh/bonvie because
+    test filenames may contain both keywords e.g. alliance_cimas_test.pdf
+    """
+    name = medical_aid_name.lower()
+    if "alliance" in name:
+        return parse_alliance(pdf_path)
+    elif "first mutual" in name or "fmh" in name:
+        return parse_fmh(pdf_path)
+    elif "cimas" in name:
+        return parse_cimas(pdf_path)
+    elif "flimas" in name:
+        return parse_flimas(pdf_path)
+    elif "bonvie" in name:
+        return parse_bonvie(pdf_path)
+    elif "cellmed" in name:
+        return parse_cellmed(pdf_path)
+    else:
+        raise ValueError(
+            f"No parser configured for medical aid: '{medical_aid_name}'. "
+            f"File: {os.path.basename(pdf_path)}. "
+            f"Add this aid to MEDICAL_AID_MAP in config.py and implement a parser."
+        )
     """Route to the correct parser based on medical aid name."""
     name = medical_aid_name.lower()
     if "first mutual" in name or "fmh" in name:

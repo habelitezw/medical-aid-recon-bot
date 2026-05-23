@@ -224,7 +224,7 @@ def build_pdfs():
     # ── Cimas: 2 fully reconciled, 1 tariff shortfall,
     #           1 data error shortfall, 1 unmatched PDF line
     _make_pdf(
-        filename    = "cimas_test_recon.pdf",
+        filename    = "alliance_cimas_test_recon.pdf",
         aid_name    = "Cimas Medical Aid",
         payment_ref = "CIMAS-EFT-20260331",
         transactions=[
@@ -249,8 +249,8 @@ def build_pdfs():
                  claimed=50.00, accepted=0.00, shortfall=50.00,
                  reason_code="40"),
             # Unmatched PDF line — patient not in Excel
-            dict(member_name="Unregistered Patient", member_id="CIMAS-999",
-                 patient_name="Unregistered Patient", treat_date="25/03/2026",
+            dict(member_name="Unknown Patient", member_id="CIMAS-999",
+                 patient_name="Unknown Patient", treat_date="25/03/2026",
                  invoice="0931-99099-99999-ZZ9", code="90030",
                  claimed=50.00, accepted=50.00, shortfall=0.00,
                  reason_code=""),
@@ -263,7 +263,7 @@ def build_pdfs():
 
     # ── FMH: 1 fully reconciled, 1 benefit exhausted, 1 unmatched PDF line
     _make_pdf(
-        filename    = "fmh_test_recon.pdf",
+        filename    = "alliance_fmh_test_recon.pdf",
         aid_name    = "First Mutual Health",
         payment_ref = "FMH-EFT-20260331",
         transactions=[
@@ -278,8 +278,8 @@ def build_pdfs():
                  claimed=50.00, accepted=40.00, shortfall=10.00,
                  reason_code="D"),
             # Unmatched PDF line
-            dict(member_name="Unknown Member",member_id="FMH-999",
-                 patient_name="Unknown Member",treat_date="29/03/2026",
+            dict(member_name="No Record",member_id="FMH-999",
+                 patient_name="No Record",treat_date="29/03/2026",
                  invoice="0931-99099-88888-YY8", code="90030",
                  claimed=60.00, accepted=60.00, shortfall=0.00,
                  reason_code=""),
@@ -289,7 +289,7 @@ def build_pdfs():
 
     # ── Alliance: 1 shortfall (not a covered benefit)
     _make_pdf(
-        filename    = "alliance_test_recon.pdf",
+        filename    = "alliance_ruth_test_recon.pdf",
         aid_name    = "Alliance Health",
         payment_ref = "ALI-EFT-20260401",
         transactions=[
@@ -304,7 +304,7 @@ def build_pdfs():
 
     # ── Bonvie: 1 fully reconciled (matched by member number — no invoice)
     _make_pdf(
-        filename    = "bonvie_test_recon.pdf",
+        filename    = "alliance_bonvie_test_recon.pdf",
         aid_name    = "Bonvie",
         payment_ref = "BON-BATCH-20260331",
         transactions=[
@@ -333,12 +333,12 @@ if __name__ == "__main__":
     print(f"\nAll files created in: {OUT_DIR}")
     print("\nUpload to the web app:")
     print("  Box 1 (Excel): Test_Client_Data.xlsx")
-    print("  Box 2 (PDFs) : cimas_test_recon.pdf, fmh_test_recon.pdf,")
-    print("                 alliance_test_recon.pdf, bonvie_test_recon.pdf,")
+    print("  Box 2 (PDFs) : alliance_cimas_test_recon.pdf, alliance_fmh_test_recon.pdf,")
+    print("                 alliance_ruth_test_recon.pdf, alliance_bonvie_test_recon.pdf,")
     print("                 corrupt_test.pdf")
     print("\nExpected results:")
     print("  Tab 2 Fully Reconciled     : 4 rows (John Moyo, Mary Dube, Peter Ncube, Clara Osei)")
     print("  Tab 3 Shortfalls for Action: 4 rows (Grace, Tafara, Ruth, David)")
-    print("  Tab 4 Unmatched Records    : 6 rows (2 PDF, 2 Excel, 2 unmatched)")
+    print("  Tab 4 Unmatched Records    : 6 rows (2 PDF unmatched, 2 Excel unmatched)")
     print("  Tab 5 Error Log            : 1 row  (corrupt_test.pdf)")
     print("  Tab 6 Action Tracker       : 4 rows (open shortfalls)")

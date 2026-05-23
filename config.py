@@ -30,7 +30,7 @@ COL_PHONE         = "Phone Number"
 
 # ── Medical aid name mapping ──────────────────────────────────
 MEDICAL_AID_MAP = {
-    "alliance" : "Alliance Health",
+    "alliance" : "Alliance Health",  
     "bonvie"   : "Bonvie",
     "cellmed"  : "CellMed",
     "cimas"    : "Cimas",

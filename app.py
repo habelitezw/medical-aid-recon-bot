@@ -1,31 +1,177 @@
 # =============================================================
-# app.py  —  Flask web interface for Medical Aid Recon Bot
+# app.py  —  Flask REST API for Medical Aid Recon Bot
+# All responses are JSON. UI is handled by PHP frontend.
 # =============================================================
 
 import os
-import shutil
 import uuid
-import json
-from datetime import datetime
-from flask import (Flask, render_template, request, send_file,
-                   redirect, url_for, flash, jsonify)
+import shutil
+import bcrypt
+import jwt
+from datetime import datetime, timedelta, timezone
+from functools import wraps
+from flask import Flask, request, jsonify
 
+from config import (MEDICAL_AID_MAP, JWT_SECRET, JWT_ALGORITHM,
+                    JWT_EXPIRY_HOURS)
 from parsers import parse_remittance, load_excel_claims
 from recon_bot import build_output, _match_by_invoice, \
                      _match_by_member_number, _match_by_name_date
-from reason_engine import (load_reason_codes, save_reason_codes,
-                           get_all_medical_aids, lookup_reason)
-from config import MEDICAL_AID_MAP, REASON_CODES_FILE
+from reason_engine import lookup_reason
+from db import (db_get_user_by_email, db_get_user_by_id,
+                db_update_last_login, db_get_all_users,
+                db_create_user, db_update_user,
+                db_get_reason_codes, db_add_reason_code,
+                db_update_reason_code, db_delete_reason_code,
+                db_save_run, db_get_runs,
+                storage_upload, storage_get_signed_url)
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "habelite-recon-2026")
-
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "habelite2026")
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+
+# ── CORS headers (allow PHP frontend to call this API) ────────
+
+@app.after_request
+def add_cors(response):
+    response.headers["Access-Control-Allow-Origin"]  = "*"
+    response.headers["Access-Control-Allow-Headers"] = \
+        "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Methods"] = \
+        "GET, POST, PUT, DELETE, OPTIONS"
+    return response
+
+@app.route("/", defaults={"path": ""}, methods=["OPTIONS"])
+@app.route("/<path:path>", methods=["OPTIONS"])
+def handle_options(path):
+    return jsonify({}), 200
+
+
+# ── JWT helpers ───────────────────────────────────────────────
+
+def _make_token(user):
+    payload = {
+        "sub"  : str(user["id"]),
+        "email": user["email"],
+        "role" : user["role"],
+        "name" : user["name"],
+        "exp"  : datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS),
+        "iat"  : datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+def _decode_token(token):
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return jsonify({"error": "Unauthorised"}), 401
+        try:
+            payload = _decode_token(auth.split(" ", 1)[1])
+            request.user = payload
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token expired"}), 401
+        except Exception:
+            return jsonify({"error": "Invalid token"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+def require_admin(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return jsonify({"error": "Unauthorised"}), 401
+        try:
+            payload = _decode_token(auth.split(" ", 1)[1])
+            if payload.get("role") != "admin":
+                return jsonify({"error": "Admin access required"}), 403
+            request.user = payload
+        except Exception:
+            return jsonify({"error": "Invalid token"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ── Auth endpoints ────────────────────────────────────────────
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    data  = request.get_json()
+    email = (data.get("email") or "").strip().lower()
+    pw    = (data.get("password") or "").encode()
+
+    user = db_get_user_by_email(email)
+    if not user or not user.get("is_active"):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    stored_hash = user["password_hash"].encode()
+    if not bcrypt.checkpw(pw, stored_hash):
+        return jsonify({"error": "Invalid credentials"}), 401
+
+    db_update_last_login(user["id"])
+    token = _make_token(user)
+    return jsonify({
+        "token": token,
+        "user" : {
+            "id"   : str(user["id"]),
+            "email": user["email"],
+            "name" : user["name"],
+            "role" : user["role"],
+        }
+    })
+
+
+@app.route("/api/auth/me", methods=["GET"])
+@require_auth
+def me():
+    user = db_get_user_by_id(request.user["sub"])
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    return jsonify({
+        "id"        : str(user["id"]),
+        "email"     : user["email"],
+        "name"      : user["name"],
+        "role"      : user["role"],
+        "is_active" : user["is_active"],
+        "created_at": str(user["created_at"]),
+        "last_login": str(user["last_login"]),
+    })
+
+
+@app.route("/api/auth/change-password", methods=["POST"])
+@require_auth
+def change_password():
+    data        = request.get_json()
+    current_pw  = (data.get("current_password") or "").encode()
+    new_pw      = (data.get("new_password") or "").encode()
+
+    if len(new_pw) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+
+    user = db_get_user_by_id(request.user["sub"])
+    if not bcrypt.checkpw(current_pw, user["password_hash"].encode()):
+        return jsonify({"error": "Current password is incorrect"}), 401
+
+    new_hash = bcrypt.hashpw(new_pw, bcrypt.gensalt()).decode()
+    db_update_user(user["id"], {"password_hash": new_hash})
+    return jsonify({"message": "Password updated successfully"})
+
+
+# ── Health check ──────────────────────────────────────────────
+
+@app.route("/api/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok", "version": "2.0"})
+
+
+# ── Reconciliation endpoint ───────────────────────────────────
 
 def _identify_medical_aid(filename):
     name = filename.lower()
@@ -62,7 +208,6 @@ def _run_recon(session_dir, excel_path, pdf_paths):
                 claim, method = _match_by_member_number(tx, excel_claims)
             if claim is None:
                 claim, method = _match_by_name_date(tx, excel_claims)
-
             if claim is not None:
                 tx["matched"]      = True
                 tx["match_method"] = method
@@ -75,14 +220,25 @@ def _run_recon(session_dir, excel_path, pdf_paths):
                 tx["matched"]      = False
                 tx["match_method"] = "unmatched"
 
-        run_date = datetime.now()
-        wb       = build_output(run_date, all_transactions,
-                                excel_claims, match_log, error_log)
-        out_name = f"RECON_{run_date.strftime('%Y%m%d_%H%M%S')}_ALL.xlsx"
-        out_path = os.path.join(session_dir, out_name)
+        run_date     = datetime.now()
+        wb           = build_output(run_date, all_transactions,
+                                    excel_claims, match_log, error_log)
+        out_name     = f"RECON_{run_date.strftime('%Y%m%d_%H%M%S')}_ALL.xlsx"
+        out_path     = os.path.join(session_dir, out_name)
         wb.save(out_path)
-        return out_path, len(all_transactions), len(excel_claims), \
-               len(match_log), error_log
+
+        shortfall_total = round(sum(
+            t["shortfall_amt"] for t in all_transactions), 2)
+
+        return {
+            "path"           : out_path,
+            "filename"       : out_name,
+            "pdf_count"      : len(pdf_paths),
+            "excel_claims"   : len(excel_claims),
+            "matched_count"  : len(match_log),
+            "shortfall_total": shortfall_total,
+            "error_count"    : len(error_log),
+        }
     finally:
         parsers.EXCEL_CLAIMS = original
 
@@ -100,24 +256,16 @@ def _cleanup_old_sessions():
                 pass
 
 
-# ── Main upload page ──────────────────────────────────────────
-
-@app.route("/", methods=["GET"])
-def index():
-    return render_template("index.html")
-
-
-@app.route("/run", methods=["POST"])
+@app.route("/api/recon/run", methods=["POST"])
+@require_auth
 def run_recon():
     excel_file = request.files.get("excel_file")
     pdf_files  = request.files.getlist("pdf_files")
 
     if not excel_file or excel_file.filename == "":
-        flash("Please upload the Client Data Excel file.", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "Excel file required"}), 400
     if not pdf_files or all(f.filename == "" for f in pdf_files):
-        flash("Please upload at least one remittance PDF.", "error")
-        return redirect(url_for("index"))
+        return jsonify({"error": "At least one PDF required"}), 400
 
     session_id  = str(uuid.uuid4())
     session_dir = os.path.join(UPLOAD_DIR, session_id)
@@ -136,115 +284,182 @@ def run_recon():
             pdf.save(pdf_path)
             pdf_paths.append(pdf_path)
 
-        out_path, *_ = _run_recon(session_dir, excel_path, pdf_paths)
-        return send_file(
-            out_path,
-            as_attachment=True,
-            download_name=os.path.basename(out_path),
-            mimetype="application/vnd.openxmlformats-officedocument"
-                     ".spreadsheetml.sheet")
-    except Exception as e:
-        flash(f"An error occurred: {str(e)}", "error")
-        return redirect(url_for("index"))
-    finally:
+        result = _run_recon(session_dir, excel_path, pdf_paths)
+
+        # Upload output to Supabase storage
+        with open(result["path"], "rb") as f:
+            file_bytes = f.read()
+
+        output_url = storage_upload(file_bytes, result["filename"])
+
+        # Save run record to database
+        run_record = db_save_run(
+            user_id         = request.user["sub"],
+            pdf_count       = result["pdf_count"],
+            excel_claims    = result["excel_claims"],
+            matched_count   = result["matched_count"],
+            shortfall_total = result["shortfall_total"],
+            error_count     = result["error_count"],
+            output_filename = result["filename"],
+            output_url      = output_url,
+        )
+
         _cleanup_old_sessions()
 
+        return jsonify({
+            "success"        : True,
+            "run_id"         : str(run_record["id"]) if run_record else None,
+            "filename"       : result["filename"],
+            "download_url"   : output_url,
+            "pdf_count"      : result["pdf_count"],
+            "excel_claims"   : result["excel_claims"],
+            "matched_count"  : result["matched_count"],
+            "shortfall_total": result["shortfall_total"],
+            "error_count"    : result["error_count"],
+        })
 
-# ── Reason Code Manager ───────────────────────────────────────
-
-@app.route("/codes", methods=["GET"])
-def codes_page():
-    """Main reason code manager page — requires admin login."""
-    if not _is_admin():
-        return redirect(url_for("admin_login"))
-    codes = load_reason_codes()
-    aids  = sorted(set(list(MEDICAL_AID_MAP.values()) + ["ALL"]))
-    classifications = [
-        "Tariff difference",
-        "Benefit exhausted",
-        "Not a covered benefit",
-        "Data / submission error",
-        "Duplicate / submission error",
-        "Scheme exclusion / co-payment",
-        "Unclassified shortfall",
-    ]
-    return render_template("codes.html",
-                           codes=codes,
-                           aids=aids,
-                           classifications=classifications)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        try:
+            shutil.rmtree(session_dir)
+        except Exception:
+            pass
 
 
-@app.route("/codes/add", methods=["POST"])
-def codes_add():
-    if not _is_admin():
-        return redirect(url_for("admin_login"))
-    codes = load_reason_codes()
-    codes.append({
-        "code"           : request.form.get("code", "").strip().upper(),
-        "medical_aid"    : request.form.get("medical_aid", "ALL"),
-        "description"    : request.form.get("description", "").strip(),
-        "classification" : request.form.get("classification", "").strip(),
-        "action"         : request.form.get("action", "").strip(),
-    })
-    save_reason_codes(codes)
-    flash("Reason code added successfully.", "success")
-    return redirect(url_for("codes_page"))
+# ── History endpoint ──────────────────────────────────────────
+
+@app.route("/api/history", methods=["GET"])
+@require_auth
+def history():
+    role    = request.user.get("role")
+    user_id = request.user["sub"] if role != "admin" else None
+    runs    = db_get_runs(user_id=user_id, limit=100)
+    return jsonify({"runs": runs})
 
 
-@app.route("/codes/delete/<int:index>", methods=["POST"])
-def codes_delete(index):
-    if not _is_admin():
-        return redirect(url_for("admin_login"))
-    codes = load_reason_codes()
-    if 0 <= index < len(codes):
-        codes.pop(index)
-        save_reason_codes(codes)
-        flash("Reason code deleted.", "success")
-    return redirect(url_for("codes_page"))
+@app.route("/api/history/<run_id>/download", methods=["GET"])
+@require_auth
+def history_download(run_id):
+    """Get a fresh signed download URL for a past run."""
+    from db import get_client
+    sb  = get_client()
+    res = sb.table("recon_runs").select("*").eq("id", run_id).execute()
+    if not res.data:
+        return jsonify({"error": "Run not found"}), 404
+    run = res.data[0]
+    if request.user.get("role") != "admin" and \
+            str(run["user_id"]) != request.user["sub"]:
+        return jsonify({"error": "Access denied"}), 403
+    url = storage_get_signed_url(run["output_filename"])
+    return jsonify({"download_url": url})
 
 
-@app.route("/codes/edit/<int:index>", methods=["POST"])
-def codes_edit(index):
-    if not _is_admin():
-        return redirect(url_for("admin_login"))
-    codes = load_reason_codes()
-    if 0 <= index < len(codes):
-        codes[index] = {
-            "code"           : request.form.get("code", "").strip().upper(),
-            "medical_aid"    : request.form.get("medical_aid", "ALL"),
-            "description"    : request.form.get("description", "").strip(),
-            "classification" : request.form.get("classification", "").strip(),
-            "action"         : request.form.get("action", "").strip(),
-        }
-        save_reason_codes(codes)
-        flash("Reason code updated.", "success")
-    return redirect(url_for("codes_page"))
+# ── Reason codes endpoints ────────────────────────────────────
+
+@app.route("/api/codes", methods=["GET"])
+@require_auth
+def get_codes():
+    return jsonify({"codes": db_get_reason_codes()})
 
 
-# ── Admin auth ────────────────────────────────────────────────
-
-@app.route("/admin/login", methods=["GET", "POST"])
-def admin_login():
-    if request.method == "POST":
-        pw = request.form.get("password", "")
-        if pw == ADMIN_PASSWORD:
-            from flask import session
-            session["admin"] = True
-            return redirect(url_for("codes_page"))
-        flash("Incorrect password.", "error")
-    return render_template("login.html")
-
-
-@app.route("/admin/logout")
-def admin_logout():
-    from flask import session
-    session.pop("admin", None)
-    return redirect(url_for("index"))
+@app.route("/api/codes", methods=["POST"])
+@require_admin
+def add_code():
+    d = request.get_json()
+    db_add_reason_code(
+        d.get("code", ""),
+        d.get("medical_aid", "ALL"),
+        d.get("description", ""),
+        d.get("classification", ""),
+        d.get("action", ""),
+        request.user["sub"],
+    )
+    return jsonify({"message": "Code added"}), 201
 
 
-def _is_admin():
-    from flask import session
-    return session.get("admin") is True
+@app.route("/api/codes/<code_id>", methods=["PUT"])
+@require_admin
+def update_code(code_id):
+    d = request.get_json()
+    db_update_reason_code(
+        code_id,
+        d.get("code", ""),
+        d.get("medical_aid", "ALL"),
+        d.get("description", ""),
+        d.get("classification", ""),
+        d.get("action", ""),
+    )
+    return jsonify({"message": "Code updated"})
+
+
+@app.route("/api/codes/<code_id>", methods=["DELETE"])
+@require_admin
+def delete_code(code_id):
+    db_delete_reason_code(code_id)
+    return jsonify({"message": "Code deleted"})
+
+
+# ── User management endpoints (admin only) ────────────────────
+
+@app.route("/api/users", methods=["GET"])
+@require_admin
+def get_users():
+    return jsonify({"users": db_get_all_users()})
+
+
+@app.route("/api/users", methods=["POST"])
+@require_admin
+def create_user():
+    d        = request.get_json()
+    email    = (d.get("email") or "").strip().lower()
+    name     = (d.get("name") or "").strip()
+    password = (d.get("password") or "").encode()
+    role     = d.get("role", "user")
+
+    if not email or not name or not password:
+        return jsonify({"error": "Email, name and password required"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if role not in ("admin", "user"):
+        return jsonify({"error": "Role must be admin or user"}), 400
+
+    if db_get_user_by_email(email):
+        return jsonify({"error": "Email already exists"}), 409
+
+    pw_hash = bcrypt.hashpw(password, bcrypt.gensalt()).decode()
+    user    = db_create_user(email, name, pw_hash, role)
+    return jsonify({"message": "User created", "user": user}), 201
+
+
+@app.route("/api/users/<user_id>", methods=["PUT"])
+@require_admin
+def update_user(user_id):
+    d       = request.get_json()
+    updates = {}
+    if "name" in d:
+        updates["name"] = d["name"].strip()
+    if "role" in d and d["role"] in ("admin", "user"):
+        updates["role"] = d["role"]
+    if "is_active" in d:
+        updates["is_active"] = bool(d["is_active"])
+    if "password" in d and d["password"]:
+        if len(d["password"]) < 8:
+            return jsonify({"error": "Password too short"}), 400
+        updates["password_hash"] = bcrypt.hashpw(
+            d["password"].encode(), bcrypt.gensalt()).decode()
+    if updates:
+        db_update_user(user_id, updates)
+    return jsonify({"message": "User updated"})
+
+
+@app.route("/api/users/<user_id>", methods=["DELETE"])
+@require_admin
+def delete_user(user_id):
+    if user_id == request.user["sub"]:
+        return jsonify({"error": "Cannot delete your own account"}), 400
+    db_update_user(user_id, {"is_active": False})
+    return jsonify({"message": "User deactivated"})
 
 
 if __name__ == "__main__":

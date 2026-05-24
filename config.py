@@ -4,13 +4,24 @@
 
 import os
 
-# ── Folders ───────────────────────────────────────────────────
+# ── Local folder paths (used by recon_bot.py CLI only) ───────
 INTAKE_FOLDER    = r"D:\Medical Aid\Files"
 PROCESSED_FOLDER = r"D:\Medical Aid\Files\Processed"
 OUTPUT_FOLDER    = r"D:\Medical Aid\Files\Output"
 EXCEL_CLAIMS     = r"D:\Medical Aid\Files\Client Data.xlsx"
 
-# ── Reason codes config file ──────────────────────────────────
+# ── Supabase ──────────────────────────────────────────────────
+SUPABASE_URL      = os.environ.get("SUPABASE_URL", "https://uudmvdpxhghijijutdyx.supabase.co")
+SUPABASE_ANON     = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE  = os.environ.get("SUPABASE_SERVICE_KEY", "")
+SUPABASE_BUCKET   = "recon-outputs"
+
+# ── JWT ───────────────────────────────────────────────────────
+JWT_SECRET        = os.environ.get("JWT_SECRET", "habelite-jwt-secret-2026")
+JWT_ALGORITHM     = "HS256"
+JWT_EXPIRY_HOURS  = 8
+
+# ── Local reason codes fallback (used if DB unavailable) ─────
 BASE_DIR          = os.path.dirname(os.path.abspath(__file__))
 REASON_CODES_FILE = os.path.join(BASE_DIR, "reason_codes.json")
 
@@ -30,7 +41,7 @@ COL_PHONE         = "Phone Number"
 
 # ── Medical aid name mapping ──────────────────────────────────
 MEDICAL_AID_MAP = {
-    "alliance" : "Alliance Health",  
+    "alliance" : "Alliance Health",
     "bonvie"   : "Bonvie",
     "cellmed"  : "CellMed",
     "cimas"    : "Cimas",

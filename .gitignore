@@ -23,3 +23,7 @@ debug2.py
 # Windows
 Thumbs.db
 Desktop.ini
+
+uploads/
+TestData/
+debug*.py

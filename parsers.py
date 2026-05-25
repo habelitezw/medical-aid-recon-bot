@@ -41,6 +41,41 @@ def _safe_date(val):
             continue
     return None
 
+# ── Member ID extractor ───────────────────────────────────────
+
+# Patterns for Zimbabwean medical aid member numbers
+_MEMBER_ID_PATTERNS = [
+    re.compile(r'\b(\d{8,12}[A-Z]?)\b'),        # 8-12 digit numeric, optional letter suffix
+    re.compile(r'\b([A-Z]{2,4}\d{6,10})\b'),    # 2-4 letters then digits (e.g. BA12088U)
+    re.compile(r'\b(\d{10}:\d{2})\b'),           # Bonvie format e.g. 2012283261:00
+    re.compile(r'\b([A-Z0-9]{6,12}[UN]\d*)\b'),  # ends in N or U (Alliance style)
+]
+
+def _extract_member_id(text: str) -> str:
+    """
+    Extract a member ID from a cell that may contain both
+    the member name and ID together, e.g:
+      'WONDER MADYAMBUDZI (322403002N)'
+      '322403002N Wonder Madyambudzi'
+      'MR EBENEZER GUMBO (14088113)'
+    Returns the first match found, or empty string.
+    """
+    if not text:
+        return ""
+    # First check inside parentheses — most common format
+    paren = re.findall(r'\(([^)]+)\)', text)
+    for p in paren:
+        p = p.strip()
+        for pattern in _MEMBER_ID_PATTERNS:
+            m = pattern.search(p)
+            if m:
+                return m.group(1)
+    # Then scan the full text
+    for pattern in _MEMBER_ID_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            return m.group(1)
+    return ""
 
 # ── Excel reader ──────────────────────────────────────────────
 
@@ -213,11 +248,19 @@ def _parse_text_based(pdf_path, medical_aid_name, has_claim_number=False,
         if not reason_desc and reason_code:
             reason_desc = f"Reason code {reason_code} (see remittance)"
 
+        # Try to extract member ID from member name or patient name
+        # in case it's embedded e.g. "MR JOHN DOE (14088113)"
+        extracted_id = (
+            _extract_member_id(member) or
+            _extract_member_id(patient)
+        )
+
         return {
             "source"        : "pdf",
             "medical_aid"   : medical_aid_name,
             "member_name"   : member,
             "patient_name"  : patient,
+            "member_id"     : extracted_id,
             "treat_date"    : treat_date,
             "invoice_num"   : invoice,
             "tariff_code"   : tariff_code,
@@ -379,9 +422,15 @@ def parse_bonvie(pdf_path):
                     if not reason_desc and reason_code and reason_code != "0":
                         reason_desc = f"Reason code {reason_code} (see remittance)"
 
+                    extracted_id = (
+                        _extract_member_id(current_member) or
+                        _extract_member_id(current_patient) or
+                        _extract_member_id(row_s[1] if len(row_s) > 1 else "")
+                    )
+
                     transactions.append({
                         "source"        : "pdf",
-                        "medical_aid"   : "Bonvie",
+                        "member_id"     : extracted_id,
                         "member_name"   : current_member,
                         "patient_name"  : current_patient,
                         "treat_date"    : treat_date,
@@ -483,11 +532,18 @@ def parse_cellmed(pdf_path):
                         f"Reason code(s) {reason_code} (see remittance)"
                         if reason_code else "")
 
+                    extracted_id = (
+                        _extract_member_id(current_member) or
+                        _extract_member_id(current_patient) or
+                        _extract_member_id(row_s[1] if len(row_s) > 1 else "")
+                    )
+
                     transactions.append({
                         "source"        : "pdf",
                         "medical_aid"   : "CellMed",
                         "member_name"   : current_member,
                         "patient_name"  : current_patient,
+                        "member_id"     : extracted_id,
                         "treat_date"    : treat_date,
                         "invoice_num"   : invoice,
                         "tariff_code"   : tariff,
@@ -636,12 +692,21 @@ def parse_alliance(pdf_path):
                     if not member_name:
                         member_name = patient
 
+                    # Extract member ID from any cell that might contain it
+                    # Handles cases where member ID is embedded in name cell
+                    # e.g. "WONDER MADYAMBUDZI (322403002N)" or blacked-out columns
+                    extracted_member_id = (
+                        _extract_member_id(member_name) or
+                        _extract_member_id(patient) or
+                        _extract_member_id(g(row_s, idx_memberid))
+                    )
+
                     transactions.append({
                         "source"        : "pdf",
                         "medical_aid"   : "Alliance Health",
                         "member_name"   : member_name,
                         "patient_name"  : patient,
-                        "member_id"     : g(row_s, idx_memberid),
+                        "member_id"     : extracted_member_id or g(row_s, idx_memberid),
                         "treat_date"    : treat_date,
                         "invoice_num"   : g(row_s, idx_invoice),
                         "tariff_code"   : tariff_code,

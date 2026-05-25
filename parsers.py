@@ -45,9 +45,9 @@ def _safe_date(val):
 
 # Patterns for Zimbabwean medical aid member numbers
 _MEMBER_ID_PATTERNS = [
+    re.compile(r'(\d{9,12}:\d{2})'),             # Bonvie format e.g. 2012283261:00
     re.compile(r'\b(\d{8,12}[A-Z]?)\b'),        # 8-12 digit numeric, optional letter suffix
     re.compile(r'\b([A-Z]{2,4}\d{6,10})\b'),    # 2-4 letters then digits (e.g. BA12088U)
-    re.compile(r'\b(\d{10}:\d{2})\b'),           # Bonvie format e.g. 2012283261:00
     re.compile(r'\b([A-Z0-9]{6,12}[UN]\d*)\b'),  # ends in N or U (Alliance style)
 ]
 
@@ -186,6 +186,8 @@ def _parse_text_based(pdf_path, medical_aid_name, has_claim_number=False,
     # ── Pass 2: extract transaction rows ──────────────────────
     current_member  = ""
     current_patient = ""
+    current_member_id = ""
+    pending_line      = None
 
     date_re = re.compile(r"^(\d{2}[/\-]\d{2}[/\-]\d{2,4})\s+(.+)$")
 
@@ -205,7 +207,7 @@ def _parse_text_based(pdf_path, medical_aid_name, has_claim_number=False,
         r"reasons?\s+explained|reason\s+description|statement\s+columns)",
         re.IGNORECASE)
 
-    def _parse_row(date_str, rest, member, patient):
+    def _parse_row(date_str, rest, member, patient, member_id=""):
         parts = rest.split()
         if len(parts) < 4:
             return None
@@ -250,10 +252,7 @@ def _parse_text_based(pdf_path, medical_aid_name, has_claim_number=False,
 
         # Try to extract member ID from member name or patient name
         # in case it's embedded e.g. "MR JOHN DOE (14088113)"
-        extracted_id = (
-            _extract_member_id(member) or
-            _extract_member_id(patient)
-        )
+        extracted_id = member_id or _extract_member_id(member) or _extract_member_id(patient)
 
         return {
             "source"        : "pdf",
@@ -283,8 +282,14 @@ def _parse_text_based(pdf_path, medical_aid_name, has_claim_number=False,
         if m:
             raw_member  = m.group(1).strip()
             raw_patient = m.group(2).strip()
+            # Extract member ID BEFORE stripping parentheses
+            current_member_id = (
+                _extract_member_id(raw_member) or
+                _extract_member_id(raw_patient)
+            )
             current_member  = re.sub(r"\s*\(\d+\)\s*$", "", raw_member).strip()
             current_patient = re.sub(r"\s*\(\d+\)\s*$", "", raw_patient).strip()
+            pending_line = None
             continue
 
         if skip_re.match(stripped):
@@ -303,7 +308,8 @@ def _parse_text_based(pdf_path, medical_aid_name, has_claim_number=False,
         dm = date_re.match(stripped)
         if dm:
             tx = _parse_row(dm.group(1), dm.group(2),
-                            current_member, current_patient)
+                            current_member, current_patient,
+                            current_member_id)
             if tx:
                 transactions.append(tx)
             continue
@@ -749,25 +755,4 @@ def parse_remittance(pdf_path, medical_aid_name):
             f"File: {os.path.basename(pdf_path)}. "
             f"Add this aid to MEDICAL_AID_MAP in config.py and implement a parser."
         )
-    """Route to the correct parser based on medical aid name."""
-    name = medical_aid_name.lower()
-    if "first mutual" in name or "fmh" in name:
-        return parse_fmh(pdf_path)
-    elif "cimas" in name:
-        return parse_cimas(pdf_path)
-    elif "flimas" in name:
-        return parse_flimas(pdf_path)
-    elif "bonvie" in name:
-        return parse_bonvie(pdf_path)
-    elif "cellmed" in name:
-        return parse_cellmed(pdf_path)
-    elif "alliance" in name:
-        return parse_alliance(pdf_path)
-    else:
-        # Unknown aid — attempt Alliance-style parse then raise
-        # so the error gets logged in the Error Log tab
-        raise ValueError(
-            f"No parser configured for medical aid: '{medical_aid_name}'. "
-            f"File: {os.path.basename(pdf_path)}. "
-            f"Add this aid to MEDICAL_AID_MAP in config.py and implement a parser."
-        )
+    

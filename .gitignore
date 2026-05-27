@@ -27,3 +27,5 @@ Desktop.ini
 uploads/
 TestData/
 debug*.py
+recon_outputs/
+diag_new.py

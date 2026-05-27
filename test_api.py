@@ -130,17 +130,20 @@ if runs:
     print(f"      Latest: {latest['output_filename']} — "
           f"USD {latest['shortfall_total_usd']} shortfall")
 
-# Step 6: Get fresh download URL for latest run
+# Step 6: Download the file for latest run
 if runs:
-    print("\n[6] Download URL for latest run...")
+    print("\n[6] Download latest run file...")
     latest_id = runs[0]["id"]
-    res, code = api(f"/api/history/{latest_id}/download", token=token)
-    if code == 200 and res.get("download_url"):
-        print(f"    ✓ Signed URL generated successfully")
-        print(f"      {res['download_url'][:60]}...")
-    else:
-        print(f"    ✗ Download URL failed: {res}")
-
-print("\n" + "=" * 55)
-print("End-to-end test complete")
-print("=" * 55)
+    url = f"http://127.0.0.1:5000/api/history/{latest_id}/download"
+    req = urllib.request.Request(
+        url,
+        headers={"Authorization": "Bearer " + token})
+    try:
+        res  = urllib.request.urlopen(req, timeout=30)
+        data = res.read()
+        ct   = res.headers.get("Content-Type", "")
+        print(f"    ✓ File downloaded successfully")
+        print(f"      Size: {len(data):,} bytes")
+        print(f"      Content-Type: {ct}")
+    except Exception as e:
+        print(f"    ✗ Download failed: {e}")

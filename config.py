@@ -10,12 +10,6 @@ PROCESSED_FOLDER = r"D:\Medical Aid\Files\Processed"
 OUTPUT_FOLDER    = r"D:\Medical Aid\Files\Output"
 EXCEL_CLAIMS     = r"D:\Medical Aid\Files\Client Data.xlsx"
 
-# ── Supabase ──────────────────────────────────────────────────
-SUPABASE_URL      = os.environ.get("SUPABASE_URL", "https://uudmvdpxhghijijutdyx.supabase.co")
-SUPABASE_ANON     = os.environ.get("SUPABASE_ANON_KEY", "")
-SUPABASE_SERVICE  = os.environ.get("SUPABASE_SERVICE_KEY", "")
-SUPABASE_BUCKET   = "recon-outputs"
-
 # ── JWT ───────────────────────────────────────────────────────
 JWT_SECRET        = os.environ.get("JWT_SECRET", "habelite-jwt-secret-2026")
 JWT_ALGORITHM     = "HS256"
@@ -41,14 +35,19 @@ COL_PHONE         = "Phone Number"
 
 # ── Medical aid name mapping ──────────────────────────────────
 MEDICAL_AID_MAP = {
-    "alliance" : "Alliance Health",
-    "bonvie"   : "Bonvie",
-    "cellmed"  : "CellMed",
-    "cimas"    : "Cimas",
-    "flimas"   : "FLIMAS",
-    "fmh"      : "First Mutual Health",
-    "psmas"    : "PSMAS",
-    "corrupt"  : "Unknown",
+    "alliance"    : "Alliance Health",
+    "bonvie"      : "Bonvie",
+    "cellmed"     : "CellMed",
+    "cimas"       : "Cimas",
+    "flimas"      : "FLIMAS",
+    "fmh"         : "First Mutual Health",
+    "psmas"       : "PSMAS",
+    "corrupt"     : "Unknown",
+    "gen health"  : "Generation Health",
+    "gen_health"  : "Generation Health",
+    "genhealth"   : "Generation Health",
+    "generation"  : "Generation Health",
+    "maisha"      : "Maisha Health Fund",
 }
 
 # ── Fuzzy match threshold ─────────────────────────────────────
@@ -56,3 +55,16 @@ FUZZY_THRESHOLD = 80
 
 # ── Fallback when no reason code matches ─────────────────────
 REASON_ACTION_DEFAULT = ("Unclassified shortfall", "Manual review required")
+
+# ── MySQL Database ────────────────────────────────────────────
+MYSQL_HOST     = os.environ.get("MYSQL_HOST",     "localhost")
+MYSQL_PORT     = int(os.environ.get("MYSQL_PORT", "3306"))
+MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "habelite_recon")
+MYSQL_USER     = os.environ.get("MYSQL_USER",     "recon_user")
+MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "ReconLocal2026")
+
+# ── File storage (local filesystem) ──────────────────────────
+RECON_OUTPUT_DIR = os.environ.get(
+    "RECON_OUTPUT_DIR",
+    os.path.join(BASE_DIR, "recon_outputs")
+)

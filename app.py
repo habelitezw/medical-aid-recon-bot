@@ -24,7 +24,7 @@ from db import (db_get_user_by_email, db_get_user_by_id,
                 db_get_reason_codes, db_add_reason_code,
                 db_update_reason_code, db_delete_reason_code,
                 db_save_run, db_get_runs,
-                storage_upload, storage_get_signed_url)
+                storage_save, storage_get_path)
 
 app = Flask(__name__)
 
@@ -286,11 +286,12 @@ def run_recon():
 
         result = _run_recon(session_dir, excel_path, pdf_paths)
 
-        # Upload output to Supabase storage
+        # Save output to local filesystem
         with open(result["path"], "rb") as f:
             file_bytes = f.read()
 
-        output_url = storage_upload(file_bytes, result["filename"])
+        output_path = storage_save(file_bytes, result["filename"])
+        output_url  = output_path  # stored as filepath in MySQL
 
         # Save run record to database
         run_record = db_save_run(
@@ -341,19 +342,29 @@ def history():
 @app.route("/api/history/<run_id>/download", methods=["GET"])
 @require_auth
 def history_download(run_id):
-    """Get a fresh signed download URL for a past run."""
-    from db import get_client
-    sb  = get_client()
-    res = sb.table("recon_runs").select("*").eq("id", run_id).execute()
-    if not res.data:
+    """Stream the output file directly for download."""
+    from db import db_get_run_by_id
+    from flask import send_file
+    run = db_get_run_by_id(run_id)
+    if not run:
         return jsonify({"error": "Run not found"}), 404
-    run = res.data[0]
     if request.user.get("role") != "admin" and \
             str(run["user_id"]) != request.user["sub"]:
         return jsonify({"error": "Access denied"}), 403
-    url = storage_get_signed_url(run["output_filename"])
-    return jsonify({"download_url": url})
 
+    filepath = run.get("output_filepath") or \
+               storage_get_path(run["output_filename"])
+
+    if not os.path.exists(filepath):
+        return jsonify({"error": "File not found on server"}), 404
+
+    return send_file(
+        filepath,
+        as_attachment=True,
+        download_name=run["output_filename"],
+        mimetype="application/vnd.openxmlformats-officedocument"
+                 ".spreadsheetml.sheet"
+    )
 
 # ── Reason codes endpoints ────────────────────────────────────
 

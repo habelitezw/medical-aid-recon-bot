@@ -576,6 +576,31 @@ def parse_cellmed(pdf_path):
 # The "Member Name" column is split across two cells due to a
 # merged None cell — we handle this by joining adjacent cells.
 
+# ── Generation Health parser ──────────────────────────────────
+# Same format as Cimas — text-based with Claim Number and Tax columns
+
+def parse_generation_health(pdf_path):
+    return _parse_text_based(
+        pdf_path,
+        medical_aid_name="Generation Health",
+        has_claim_number=True,
+        has_tax_column=True
+    )
+
+
+# ── Maisha Health Fund parser ─────────────────────────────────
+# Text-based. Same as FLIMAS — no Claim Number, has Tax column.
+# No dedicated Shortfall column — derived from Claimed - Accepted.
+# Also uses "Accepted in full" summary rows.
+
+def parse_maisha(pdf_path):
+    return _parse_text_based(
+        pdf_path,
+        medical_aid_name="Maisha Health Fund",
+        has_claim_number=False,
+        has_tax_column=True
+    )
+
 def parse_alliance(pdf_path):
     """
     Parse an Alliance Health payment notice PDF.
@@ -604,11 +629,15 @@ def parse_alliance(pdf_path):
                 if not table or len(table) < 2:
                     continue
 
-                # Find header row containing "claim date"
+                # Find header row — Alliance uses either "claim date"
+                # (Payment Notice format) or "treatment date" (Remittance format)
                 header_row_idx = None
                 for idx, row in enumerate(table):
-                    if row and any("claim date" in str(c).lower()
-                                   for c in row if c):
+                    if row and any(
+                        kw in str(c).lower()
+                        for c in row if c
+                        for kw in ("claim date", "treatment date", "treatment\ndate")
+                    ):
                         header_row_idx = idx
                         break
                 if header_row_idx is None:
@@ -634,7 +663,7 @@ def parse_alliance(pdf_path):
                             return i
                     return None
 
-                idx_date      = col_idx("claim date")
+                idx_date = col_idx("claim date") or col_idx("treatment date") or col_idx("treatment")
                 idx_claimno   = col_idx("claimno")
                 idx_memberid  = col_idx("memberid")
                 idx_claimed   = col_idx("claimed")
@@ -732,13 +761,18 @@ def parse_alliance(pdf_path):
 # ── Dispatcher ────────────────────────────────────────────────
 
 def parse_remittance(pdf_path, medical_aid_name):
-    """Route to the correct parser based on medical aid name.
+    """
+    Route to the correct parser based on medical aid name.
     NOTE: alliance must be checked BEFORE cimas/fmh/bonvie because
-    test filenames may contain both keywords e.g. alliance_cimas_test.pdf
+    test filenames may contain both keywords.
     """
     name = medical_aid_name.lower()
     if "alliance" in name:
         return parse_alliance(pdf_path)
+    elif "generation" in name:
+        return parse_generation_health(pdf_path)
+    elif "maisha" in name:
+        return parse_maisha(pdf_path)
     elif "first mutual" in name or "fmh" in name:
         return parse_fmh(pdf_path)
     elif "cimas" in name:
@@ -754,5 +788,4 @@ def parse_remittance(pdf_path, medical_aid_name):
             f"No parser configured for medical aid: '{medical_aid_name}'. "
             f"File: {os.path.basename(pdf_path)}. "
             f"Add this aid to MEDICAL_AID_MAP in config.py and implement a parser."
-        )
-    
+        )  

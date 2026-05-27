@@ -63,6 +63,13 @@ MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "habelite_recon")
 MYSQL_USER     = os.environ.get("MYSQL_USER",     "recon_user")
 MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "ReconLocal2026")
 
+DB_BACKEND = os.environ.get("DB_BACKEND", "mysql")
+
+# ── Supabase (used when DB_BACKEND=supabase) ──────────────────
+SUPABASE_URL     = os.environ.get("SUPABASE_URL", "https://uudmvdpxhghijijutdyx.supabase.co")
+SUPABASE_SERVICE = os.environ.get("SUPABASE_SERVICE_KEY", "")
+SUPABASE_BUCKET  = "recon-outputs"
+
 # ── File storage (local filesystem) ──────────────────────────
 RECON_OUTPUT_DIR = os.environ.get(
     "RECON_OUTPUT_DIR",

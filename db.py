@@ -10,6 +10,43 @@ from datetime import datetime
 from config import (MYSQL_HOST, MYSQL_PORT, MYSQL_DATABASE,
                     MYSQL_USER, MYSQL_PASSWORD, RECON_OUTPUT_DIR)
 
+# ── Backend routing ───────────────────────────────────────────
+# If DB_BACKEND=supabase, import all functions from db_supabase
+# and replace this module's namespace so callers see no difference
+import sys as _sys
+from config import DB_BACKEND as _BACKEND
+
+if _BACKEND == "supabase":
+    from db_supabase import (
+        db_get_reason_codes, db_add_reason_code,
+        db_update_reason_code, db_delete_reason_code,
+        db_get_user_by_email, db_get_user_by_id,
+        db_get_all_users, db_create_user,
+        db_update_user, db_update_last_login,
+        db_save_run, db_get_runs, db_get_run_by_id,
+        storage_save, storage_save_blob,
+        storage_get_blob, storage_get_path,
+    )
+    # Replace all MySQL functions in this module with Supabase ones
+    _mod = _sys.modules[__name__]
+    _mod.db_get_reason_codes   = db_get_reason_codes
+    _mod.db_add_reason_code    = db_add_reason_code
+    _mod.db_update_reason_code = db_update_reason_code
+    _mod.db_delete_reason_code = db_delete_reason_code
+    _mod.db_get_user_by_email  = db_get_user_by_email
+    _mod.db_get_user_by_id     = db_get_user_by_id
+    _mod.db_get_all_users      = db_get_all_users
+    _mod.db_create_user        = db_create_user
+    _mod.db_update_user        = db_update_user
+    _mod.db_update_last_login  = db_update_last_login
+    _mod.db_save_run           = db_save_run
+    _mod.db_get_runs           = db_get_runs
+    _mod.db_get_run_by_id      = db_get_run_by_id
+    _mod.storage_save          = storage_save
+    _mod.storage_save_blob     = storage_save_blob
+    _mod.storage_get_blob      = storage_get_blob
+    _mod.storage_get_path      = storage_get_path
+
 os.makedirs(RECON_OUTPUT_DIR, exist_ok=True)
 
 
@@ -307,5 +344,3 @@ def storage_get_path(filename):
     """Return local path if file exists, otherwise None."""
     path = os.path.join(RECON_OUTPUT_DIR, filename)
     return path if os.path.exists(path) else None
-    """Return the full path to a stored output file."""
-    return os.path.join(RECON_OUTPUT_DIR, filename)

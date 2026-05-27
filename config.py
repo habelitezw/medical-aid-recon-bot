@@ -11,7 +11,7 @@ OUTPUT_FOLDER    = r"D:\Medical Aid\Files\Output"
 EXCEL_CLAIMS     = r"D:\Medical Aid\Files\Client Data.xlsx"
 
 # ── JWT ───────────────────────────────────────────────────────
-JWT_SECRET        = os.environ.get("JWT_SECRET", "habelite-jwt-secret-2026")
+JWT_SECRET = os.environ.get("JWT_SECRET", "habelite-jwt-secret-2026-production-key")
 JWT_ALGORITHM     = "HS256"
 JWT_EXPIRY_HOURS  = 8
 

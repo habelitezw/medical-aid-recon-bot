@@ -208,18 +208,22 @@ def db_get_runs(user_id=None, limit=100):
     conn = get_conn()
     try:
         cur = conn.cursor()
+        cols = ("r.id, r.user_id, r.run_date, r.pdf_count, r.excel_claims, "
+                "r.matched_count, r.shortfall_total_usd, r.error_count, "
+                "r.output_filename, r.output_filepath, r.created_at, "
+                "u.name AS user_name, u.email AS user_email")
         if user_id:
             cur.execute(
-                "SELECT r.*, u.name AS user_name, u.email AS user_email "
-                "FROM recon_runs r JOIN users u ON r.user_id = u.id "
+                f"SELECT {cols} FROM recon_runs r "
+                "JOIN users u ON r.user_id = u.id "
                 "WHERE r.user_id=%s "
                 "ORDER BY r.run_date DESC LIMIT %s",
                 (user_id, limit)
             )
         else:
             cur.execute(
-                "SELECT r.*, u.name AS user_name, u.email AS user_email "
-                "FROM recon_runs r JOIN users u ON r.user_id = u.id "
+                f"SELECT {cols} FROM recon_runs r "
+                "JOIN users u ON r.user_id = u.id "
                 "ORDER BY r.run_date DESC LIMIT %s",
                 (limit,)
             )
@@ -251,16 +255,57 @@ def db_get_run_by_id(run_id):
         conn.close()
 
 
-# ── File storage (local filesystem) ──────────────────────────
+# ── File storage (MySQL BLOB) ─────────────────────────────────
 
 def storage_save(file_bytes, filename):
-    """Save output file to local filesystem. Returns the file path."""
-    path = os.path.join(RECON_OUTPUT_DIR, filename)
-    with open(path, "wb") as f:
-        f.write(file_bytes)
-    return path
+    """
+    Save output file bytes to MySQL BLOB storage.
+    Returns the filename as the reference key.
+    """
+    # Also save locally as backup if output dir is available
+    try:
+        path = os.path.join(RECON_OUTPUT_DIR, filename)
+        with open(path, "wb") as f:
+            f.write(file_bytes)
+    except Exception:
+        pass
+    return filename  # Return filename as the reference
+
+
+def storage_save_blob(run_id, file_bytes):
+    """Store the output file as a BLOB against the run record."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE recon_runs SET output_data=%s WHERE id=%s",
+            (file_bytes, run_id)
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def storage_get_blob(run_id):
+    """Retrieve output file bytes from MySQL BLOB storage."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT output_data, output_filename FROM recon_runs WHERE id=%s",
+            (run_id,)
+        )
+        row = cur.fetchone()
+        if row and row[0]:
+            return row[0], row[1]
+        return None, None
+    finally:
+        conn.close()
 
 
 def storage_get_path(filename):
+    """Return local path if file exists, otherwise None."""
+    path = os.path.join(RECON_OUTPUT_DIR, filename)
+    return path if os.path.exists(path) else None
     """Return the full path to a stored output file."""
     return os.path.join(RECON_OUTPUT_DIR, filename)

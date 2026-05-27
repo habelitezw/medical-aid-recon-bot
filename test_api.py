@@ -6,7 +6,7 @@ import urllib.error
 import json
 import os
 
-API = "https://medical-aid-recon-bot.onrender.com"
+API = "http://127.0.0.1:5000"
 
 # ── Files to upload ───────────────────────────────────────────
 EXCEL = r"D:\Medical Aid\TestData\Test_Client_Data.xlsx"

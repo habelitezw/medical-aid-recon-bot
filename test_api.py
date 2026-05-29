@@ -6,7 +6,7 @@ import urllib.error
 import json
 import os
 
-API = "http://127.0.0.1:5000"
+API = "https://medical-aid-recon-bot.onrender.com"
 
 # ── Files to upload ───────────────────────────────────────────
 EXCEL = r"D:\Medical Aid\TestData\Test_Client_Data.xlsx"
@@ -26,10 +26,15 @@ def api(endpoint, method="GET", data=None, token=None):
     body = json.dumps(data).encode() if data else None
     req  = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        res = urllib.request.urlopen(req, timeout=30)
+        res = urllib.request.urlopen(req, timeout=60)
         return json.loads(res.read()), res.getcode()
     except urllib.error.HTTPError as e:
-        return json.loads(e.read()), e.code
+        raw = e.read()
+        print(f"  DEBUG HTTP {e.code}: raw={raw[:500]}")
+        try:
+            return json.loads(raw), e.code
+        except Exception:
+            return {"error": f"HTTP {e.code}", "raw": raw.decode("utf-8","replace")}, e.code
 
 print("=" * 55)
 print("Medical Aid Recon Bot — End-to-End API Test")
@@ -134,7 +139,7 @@ if runs:
 if runs:
     print("\n[6] Download latest run file...")
     latest_id = runs[0]["id"]
-    url = f"http://127.0.0.1:5000/api/history/{latest_id}/download"
+    url = f"{API}/api/history/{latest_id}/download"
     req = urllib.request.Request(
         url,
         headers={"Authorization": "Bearer " + token})

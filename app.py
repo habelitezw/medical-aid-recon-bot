@@ -369,11 +369,16 @@ def history_download(run_id):
                      ".spreadsheetml.sheet"
         )
 
-    # Fall back to local filesystem
-    local_path = storage_get_path(run["output_filename"])
-    if local_path:
+    # Fall back to storage_get_path — returns URL (Supabase) or local path (MySQL)
+    path_or_url = storage_get_path(run["output_filename"])
+    if path_or_url:
+        # If it's a URL (Supabase signed URL), redirect to it
+        if path_or_url.startswith("http"):
+            from flask import redirect
+            return redirect(path_or_url)
+        # Otherwise it's a local file path
         return send_file(
-            local_path,
+            path_or_url,
             as_attachment=True,
             download_name=run["output_filename"],
             mimetype="application/vnd.openxmlformats-officedocument"

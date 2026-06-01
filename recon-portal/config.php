@@ -4,7 +4,7 @@
 // Edit API_BASE_URL if the Python API URL changes
 // =============================================================
 
-define('API_BASE_URL', 'https://habe.co.zw/myclients/medical-aid-recon-bot');
+define('API_BASE_URL', 'https://habe.co.zw/myclients/medical-aid-recon-bot-api');
 define('APP_NAME',     'Medical Aid Reconciliation');
 define('APP_VERSION',  '2.0');
 define('SESSION_NAME', 'recon_session');

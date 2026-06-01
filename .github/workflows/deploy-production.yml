@@ -12,6 +12,7 @@ concurrency:
 
 env:
   API_BASE_URL: ${{ secrets.API_BASE_URL }}
+  PORTAL_BASE_URL: https://habe.co.zw/myclients/medical-aid-recon-bot
 
 jobs:
   validate:
@@ -177,7 +178,7 @@ jobs:
             --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
             --data-urlencode "action=activate" \
             --data-urlencode "release=$GITHUB_SHA" \
-            "$API_BASE_URL/deployment_activate.php"
+            "$PORTAL_BASE_URL/deployment_activate.php"
 
       - name: Verify release and rollback on failure
         env:
@@ -185,7 +186,7 @@ jobs:
         run: |
           rollback() {
             echo "Release verification failed. Restoring previous release." >&2
-            curl \
+            if ! curl \
               --fail \
               --silent \
               --show-error \
@@ -193,19 +194,32 @@ jobs:
               --request POST \
               --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
               --data-urlencode "action=rollback" \
-              "$API_BASE_URL/deployment_activate.php"
+              "$PORTAL_BASE_URL/deployment_activate.php"
+            then
+              echo "Rollback was unavailable. This is expected on the first deployment because no previous release exists." >&2
+            fi
           }
 
           healthy=false
           for attempt in {1..30}; do
-            if curl \
-              --fail \
+            status_code="$(
+              curl \
               --silent \
               --show-error \
+              --output /tmp/api-health-response.txt \
+              --write-out "%{http_code}" \
               --max-time 15 \
               "$API_BASE_URL/api/health"
-            then
+            )"
+
+            if [ "$status_code" -ge 200 ] && [ "$status_code" -lt 300 ]; then
+              cat /tmp/api-health-response.txt
               healthy=true
+              break
+            fi
+
+            if [ "$status_code" = "404" ]; then
+              echo "API health endpoint returned 404. Confirm that the cPanel Python App URL routes to Passenger." >&2
               break
             fi
 

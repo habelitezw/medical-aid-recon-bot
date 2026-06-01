@@ -1,6 +1,7 @@
 # test_member_id.py — verify member ID extraction from text
 from parsers import _extract_member_id, parse_fmh, parse_alliance
 import os
+import sys
 
 print("=== Member ID extraction tests ===")
 tests = [
@@ -36,3 +37,6 @@ if os.path.exists(fmh_path):
 else:
     print(f"  FMH PDF not found at {fmh_path}")
     print("  (move it back from Processed folder to test with real data)")
+
+if not all_passed:
+    sys.exit(1)

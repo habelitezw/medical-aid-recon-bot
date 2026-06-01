@@ -14,6 +14,10 @@ def _sb():
     return create_client(SUPABASE_URL, SUPABASE_SERVICE)
 
 
+def db_health_check():
+    _sb().table("reason_codes").select("id").limit(1).execute()
+
+
 # ── Reason codes ──────────────────────────────────────────────
 
 def db_get_reason_codes():

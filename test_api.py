@@ -3,10 +3,18 @@
 
 import urllib.request
 import urllib.error
+import urllib.parse
 import json
 import os
 
-API = "https://medical-aid-recon-bot.onrender.com"
+API      = os.environ.get("API_BASE_URL", "http://127.0.0.1:5000").rstrip("/")
+EMAIL    = os.environ.get("TEST_API_EMAIL", "")
+PASSWORD = os.environ.get("TEST_API_PASSWORD", "")
+
+if not EMAIL or not PASSWORD:
+    raise RuntimeError("TEST_API_EMAIL and TEST_API_PASSWORD are required")
+if urllib.parse.urlparse(API).scheme not in ("http", "https"):
+    raise RuntimeError("API_BASE_URL must use http or https")
 
 # ── Files to upload ───────────────────────────────────────────
 EXCEL = r"D:\Medical Aid\TestData\Test_Client_Data.xlsx"
@@ -26,7 +34,7 @@ def api(endpoint, method="GET", data=None, token=None):
     body = json.dumps(data).encode() if data else None
     req  = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
-        res = urllib.request.urlopen(req, timeout=60)
+        res = urllib.request.urlopen(req, timeout=60)  # nosec B310
         return json.loads(res.read()), res.getcode()
     except urllib.error.HTTPError as e:
         raw = e.read()
@@ -43,7 +51,7 @@ print("=" * 55)
 # Step 1: Login
 print("\n[1] Login...")
 res, code = api("/api/auth/login", "POST",
-                {"email": "takurajunia@gmail.com", "password": "Habelite2026"})
+                {"email": EMAIL, "password": PASSWORD})
 assert code == 200, f"Login failed: {res}"
 token = res["token"]
 print(f"    ✓ Logged in as {res['user']['name']} ({res['user']['role']})")
@@ -103,7 +111,7 @@ req = urllib.request.Request(
 )
 
 try:
-    res  = urllib.request.urlopen(req, timeout=180)
+    res  = urllib.request.urlopen(req, timeout=180)  # nosec B310
     body = json.loads(res.read())
     code = res.getcode()
 except urllib.error.HTTPError as e:
@@ -144,7 +152,7 @@ if runs:
         url,
         headers={"Authorization": "Bearer " + token})
     try:
-        res  = urllib.request.urlopen(req, timeout=30)
+        res  = urllib.request.urlopen(req, timeout=30)  # nosec B310
         data = res.read()
         ct   = res.headers.get("Content-Type", "")
         print(f"    ✓ File downloaded successfully")

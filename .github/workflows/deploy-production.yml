@@ -1,0 +1,230 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+env:
+  API_BASE_URL: ${{ secrets.API_BASE_URL }}
+
+jobs:
+  validate:
+    name: Validate Application
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install bandit pip-audit
+
+      - name: Compile Python source
+        run: python -m compileall -q .
+
+      - name: Run Python tests
+        run: python test_member_id.py
+
+      - name: Lint PHP source
+        run: find recon-portal deploy/bootstrap -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Audit Python dependencies
+        run: python -m pip_audit --cache-dir /tmp/pip-audit-cache -r requirements.txt
+
+      - name: Scan Python source
+        run: bandit -r . -x ./.git,./deployment,./vendor -ll
+
+  deploy:
+    name: Deploy cPanel Application
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Validate FTP secrets
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          required=(
+            API_BASE_URL
+            DEPLOYMENT_TOKEN
+            FTP_SERVER
+            FTP_USERNAME
+            FTP_PASSWORD
+            FTP_SERVER_DIR
+          )
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required production secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          if [[ "$FTP_SERVER_DIR" != */ ]]; then
+            echo "FTP_SERVER_DIR must end with a trailing slash." >&2
+            exit 1
+          fi
+
+      - name: Prepare deployment package
+        env:
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+        run: |
+          mkdir -p deployment/release/vendor deployment/bootstrap
+          pip install --target deployment/release/vendor -r requirements.txt
+
+          rsync -a ./ deployment/release/ \
+            --exclude '/.env' \
+            --exclude '/.git/' \
+            --exclude '/.github/' \
+            --exclude '/deployment/' \
+            --exclude '/deploy/' \
+            --exclude '/passenger_wsgi.py' \
+            --exclude '/recon-portal/' \
+            --exclude '/recon_outputs/' \
+            --exclude '/uploads/' \
+            --exclude '/__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude '/test_*.py'
+
+          rsync -a recon-portal/ deployment/release/
+          cp deploy/release/.htaccess deployment/release/.htaccess
+          rsync -a deploy/bootstrap/ deployment/bootstrap/
+          cp passenger_wsgi.py deployment/bootstrap/passenger_wsgi.py
+          encoded_token="$(printf '%s' "$DEPLOYMENT_TOKEN" | base64 | tr -d '\n')"
+          printf "<?php\nreturn base64_decode('%s');\n" "$encoded_token" \
+            > deployment/bootstrap/deployment_secret.php
+
+      - name: Upload immutable release via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          local-dir: ./deployment/release/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}releases/${{ github.sha }}/
+          state-name: .ftp-release-sync-state.json
+
+      - name: Upload stable deployment bootstrap via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          local-dir: ./deployment/bootstrap/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          state-name: .ftp-bootstrap-sync-state.json
+          exclude: |
+            **/.git*
+            **/.git*/**
+            releases/**
+            tmp/**
+            .current-release
+            .previous-release
+
+      - name: Activate uploaded release
+        env:
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+        run: |
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --max-time 30 \
+            --request POST \
+            --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
+            --data-urlencode "action=activate" \
+            --data-urlencode "release=$GITHUB_SHA" \
+            "$API_BASE_URL/deployment_activate.php"
+
+      - name: Verify release and rollback on failure
+        env:
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+        run: |
+          rollback() {
+            echo "Release verification failed. Restoring previous release." >&2
+            curl \
+              --fail \
+              --silent \
+              --show-error \
+              --max-time 30 \
+              --request POST \
+              --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
+              --data-urlencode "action=rollback" \
+              "$API_BASE_URL/deployment_activate.php"
+          }
+
+          healthy=false
+          for attempt in {1..30}; do
+            if curl \
+              --fail \
+              --silent \
+              --show-error \
+              --max-time 15 \
+              "$API_BASE_URL/api/health"
+            then
+              healthy=true
+              break
+            fi
+
+            echo "API is not healthy yet (attempt $attempt/30)."
+            sleep 10
+          done
+
+          if [ "$healthy" != true ]; then
+            rollback
+            exit 1
+          fi
+
+          if ! curl \
+            --fail \
+            --silent \
+            --show-error \
+            --max-time 30 \
+            "$API_BASE_URL/api/health/db"
+          then
+            rollback
+            exit 1
+          fi

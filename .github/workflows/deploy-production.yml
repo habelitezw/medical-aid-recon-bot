@@ -59,7 +59,7 @@ jobs:
     name: Deploy cPanel Application
     needs: validate
     runs-on: ubuntu-latest
-    environment: production
+    environment: staging
 
     steps:
       - name: Checkout repository

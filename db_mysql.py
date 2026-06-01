@@ -249,7 +249,7 @@ def db_get_runs(user_id=None, limit=100):
                 (limit,)
             )
         rows = _fetchall(cur)
-        # Normalise to match Supabase response shape PHP expects
+        # Normalise response shape for the PHP frontend.
         for row in rows:
             row["users"] = {
                 "name" : row.pop("user_name", ""),

@@ -26,6 +26,16 @@ def get_conn():
     )
 
 
+def db_health_check():
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+    finally:
+        conn.close()
+
+
 def _fetchone(cursor):
     row = cursor.fetchone()
     if row is None:
@@ -161,12 +171,20 @@ def db_create_user(email, name, password_hash, role="user"):
 def db_update_user(user_id, updates):
     if not updates:
         return
+    statements = {
+        "name"         : "UPDATE users SET name=%s WHERE id=%s",
+        "role"         : "UPDATE users SET role=%s WHERE id=%s",
+        "is_active"    : "UPDATE users SET is_active=%s WHERE id=%s",
+        "password_hash": "UPDATE users SET password_hash=%s WHERE id=%s",
+        "last_login"   : "UPDATE users SET last_login=%s WHERE id=%s",
+    }
     conn = get_conn()
     try:
         cur = conn.cursor()
-        fields = ", ".join(f"{k}=%s" for k in updates)
-        values = list(updates.values()) + [user_id]
-        cur.execute(f"UPDATE users SET {fields} WHERE id=%s", values)
+        for field, value in updates.items():
+            if field not in statements:
+                raise ValueError(f"Unsupported user update field: {field}")
+            cur.execute(statements[field], (value, user_id))
         conn.commit()
     finally:
         conn.close()
@@ -207,13 +225,13 @@ def db_get_runs(user_id=None, limit=100):
     conn = get_conn()
     try:
         cur = conn.cursor()
-        cols = ("r.id, r.user_id, r.run_date, r.pdf_count, r.excel_claims, "
-                "r.matched_count, r.shortfall_total_usd, r.error_count, "
-                "r.output_filename, r.output_filepath, r.created_at, "
-                "u.name AS user_name, u.email AS user_email")
         if user_id:
             cur.execute(
-                f"SELECT {cols} FROM recon_runs r "
+                "SELECT r.id, r.user_id, r.run_date, r.pdf_count, "
+                "r.excel_claims, r.matched_count, r.shortfall_total_usd, "
+                "r.error_count, r.output_filename, r.output_filepath, "
+                "r.created_at, u.name AS user_name, u.email AS user_email "
+                "FROM recon_runs r "
                 "JOIN users u ON r.user_id = u.id "
                 "WHERE r.user_id=%s "
                 "ORDER BY r.run_date DESC LIMIT %s",
@@ -221,7 +239,11 @@ def db_get_runs(user_id=None, limit=100):
             )
         else:
             cur.execute(
-                f"SELECT {cols} FROM recon_runs r "
+                "SELECT r.id, r.user_id, r.run_date, r.pdf_count, "
+                "r.excel_claims, r.matched_count, r.shortfall_total_usd, "
+                "r.error_count, r.output_filename, r.output_filepath, "
+                "r.created_at, u.name AS user_name, u.email AS user_email "
+                "FROM recon_runs r "
                 "JOIN users u ON r.user_id = u.id "
                 "ORDER BY r.run_date DESC LIMIT %s",
                 (limit,)

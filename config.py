@@ -4,6 +4,25 @@
 
 import os
 
+APP_ENV = os.environ.get("APP_ENV", "development").strip().lower()
+
+
+def _environment_value(name):
+    return os.environ.get(name, "").strip()
+
+
+def _require_production_values(*names):
+    if APP_ENV != "production":
+        return
+
+    missing = [name for name in names if not _environment_value(name)]
+    if missing:
+        raise RuntimeError(
+            "Missing required production environment variables: "
+            + ", ".join(missing)
+        )
+
+
 # ── Local folder paths (used by recon_bot.py CLI only) ───────
 INTAKE_FOLDER    = r"D:\Medical Aid\Files"
 PROCESSED_FOLDER = r"D:\Medical Aid\Files\Processed"
@@ -11,7 +30,7 @@ OUTPUT_FOLDER    = r"D:\Medical Aid\Files\Output"
 EXCEL_CLAIMS     = r"D:\Medical Aid\Files\Client Data.xlsx"
 
 # ── JWT ───────────────────────────────────────────────────────
-JWT_SECRET = os.environ.get("JWT_SECRET", "habelite-jwt-secret-2026-production-key")
+JWT_SECRET = _environment_value("JWT_SECRET")
 JWT_ALGORITHM     = "HS256"
 JWT_EXPIRY_HOURS  = 8
 
@@ -61,13 +80,13 @@ MYSQL_HOST     = os.environ.get("MYSQL_HOST",     "localhost")
 MYSQL_PORT     = int(os.environ.get("MYSQL_PORT", "3306"))
 MYSQL_DATABASE = os.environ.get("MYSQL_DATABASE", "habelite_recon")
 MYSQL_USER     = os.environ.get("MYSQL_USER",     "recon_user")
-MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "ReconLocal2026")
+MYSQL_PASSWORD = _environment_value("MYSQL_PASSWORD")
 
-DB_BACKEND = os.environ.get("DB_BACKEND", "mysql")
+DB_BACKEND = os.environ.get("DB_BACKEND", "mysql").strip().lower()
 
 # ── Supabase (used when DB_BACKEND=supabase) ──────────────────
 SUPABASE_URL     = os.environ.get("SUPABASE_URL", "https://uudmvdpxhghijijutdyx.supabase.co")
-SUPABASE_SERVICE = os.environ.get("SUPABASE_SERVICE_KEY", "")
+SUPABASE_SERVICE = _environment_value("SUPABASE_SERVICE_KEY")
 SUPABASE_BUCKET  = "recon-outputs"
 
 # ── File storage (local filesystem) ──────────────────────────
@@ -75,3 +94,17 @@ RECON_OUTPUT_DIR = os.environ.get(
     "RECON_OUTPUT_DIR",
     os.path.join(BASE_DIR, "recon_outputs")
 )
+
+if DB_BACKEND not in ("mysql", "supabase"):
+    raise RuntimeError("DB_BACKEND must be either mysql or supabase")
+
+_require_production_values("JWT_SECRET")
+if DB_BACKEND == "mysql":
+    _require_production_values(
+        "MYSQL_HOST",
+        "MYSQL_DATABASE",
+        "MYSQL_USER",
+        "MYSQL_PASSWORD",
+    )
+else:
+    _require_production_values("SUPABASE_URL", "SUPABASE_SERVICE_KEY")

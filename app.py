@@ -21,6 +21,7 @@ from reason_engine import lookup_reason
 from db import (db_get_user_by_email, db_get_user_by_id,
                 db_update_last_login, db_get_all_users,
                 db_create_user, db_update_user,
+                db_health_check,
                 db_get_reason_codes, db_add_reason_code,
                 db_update_reason_code, db_delete_reason_code,
                 db_save_run, db_get_runs, db_get_run_by_id,
@@ -170,6 +171,16 @@ def change_password():
 @app.route("/api/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "version": "2.0"})
+
+
+@app.route("/api/health/db", methods=["GET"])
+def db_health():
+    try:
+        db_health_check()
+        return jsonify({"status": "ok", "database": "connected"})
+    except Exception:
+        app.logger.exception("Database health check failed")
+        return jsonify({"status": "error", "database": "unavailable"}), 503
 
 
 # ── Reconciliation endpoint ───────────────────────────────────
@@ -495,4 +506,4 @@ def delete_user(user_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(debug=False, host=os.environ.get("HOST", "127.0.0.1"), port=5000)

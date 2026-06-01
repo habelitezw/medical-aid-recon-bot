@@ -11,6 +11,7 @@ if DB_BACKEND == "supabase":
     from db_supabase import (
         db_get_reason_codes, db_add_reason_code,
         db_update_reason_code, db_delete_reason_code,
+        db_health_check,
         db_get_user_by_email, db_get_user_by_id,
         db_get_all_users, db_create_user,
         db_update_user, db_update_last_login,
@@ -23,6 +24,7 @@ else:
     from db_mysql import (
         db_get_reason_codes, db_add_reason_code,
         db_update_reason_code, db_delete_reason_code,
+        db_health_check,
         db_get_user_by_email, db_get_user_by_id,
         db_get_all_users, db_create_user,
         db_update_user, db_update_last_login,

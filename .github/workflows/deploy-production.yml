@@ -169,16 +169,17 @@ jobs:
         env:
           DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
         run: |
-          curl \
-            --fail \
-            --silent \
-            --show-error \
-            --max-time 30 \
-            --request POST \
-            --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
-            --data-urlencode "action=activate" \
-            --data-urlencode "release=$GITHUB_SHA" \
-            "$PORTAL_BASE_URL/deployment_activate.php"
+          payload="$(printf '{"action":"activate","release":"%s"}' "$GITHUB_SHA")"
+          status_code="$(
+            curl               --silent               --show-error               --output /tmp/deployment-activate-response.txt               --write-out "%{http_code}"               --max-time 30               --request POST               --header "X-Deployment-Token: $DEPLOYMENT_TOKEN"               --header "Content-Type: application/json"               --header "Accept: application/json"               --data "$payload"               "$PORTAL_BASE_URL/deployment_activate.php"
+          )"
+
+          cat /tmp/deployment-activate-response.txt
+
+          if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
+            echo "Release activation failed with HTTP $status_code." >&2
+            exit 1
+          fi
 
       - name: Verify release and rollback on failure
         env:
@@ -186,17 +187,15 @@ jobs:
         run: |
           rollback() {
             echo "Release verification failed. Restoring previous release." >&2
-            if ! curl \
-              --fail \
-              --silent \
-              --show-error \
-              --max-time 30 \
-              --request POST \
-              --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
-              --data-urlencode "action=rollback" \
-              "$PORTAL_BASE_URL/deployment_activate.php"
-            then
+            status_code="$(
+              curl                 --silent                 --show-error                 --output /tmp/deployment-rollback-response.txt                 --write-out "%{http_code}"                 --max-time 30                 --request POST                 --header "X-Deployment-Token: $DEPLOYMENT_TOKEN"                 --header "Content-Type: application/json"                 --header "Accept: application/json"                 --data '{"action":"rollback"}'                 "$PORTAL_BASE_URL/deployment_activate.php"
+            )"
+
+            cat /tmp/deployment-rollback-response.txt
+
+            if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
               echo "Rollback was unavailable. This is expected on the first deployment because no previous release exists." >&2
+              return
             fi
           }
 

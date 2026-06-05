@@ -41,6 +41,29 @@ function validate_release(string $release_id): void {
     }
 }
 
+function request_payload(): array {
+    $content_type = strtolower(trim((string) ($_SERVER['CONTENT_TYPE'] ?? '')));
+    if (($separator = strpos($content_type, ';')) !== false) {
+        $content_type = trim(substr($content_type, 0, $separator));
+    }
+
+    if ($content_type === 'application/json') {
+        $raw_body = file_get_contents('php://input');
+        if ($raw_body === false || trim($raw_body) === '') {
+            return [];
+        }
+
+        $decoded_body = json_decode($raw_body, true);
+        if (!is_array($decoded_body)) {
+            fail(400, 'Invalid JSON payload.');
+        }
+
+        return $decoded_body;
+    }
+
+    return $_POST;
+}
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     fail(405, 'Method not allowed.');
 }
@@ -52,11 +75,12 @@ if ($expected_token === '' || !hash_equals($expected_token, $provided_token)) {
     fail(403, 'Forbidden.');
 }
 
-$action = $_POST['action'] ?? 'activate';
+$request = request_payload();
+$action = $request['action'] ?? 'activate';
 $current_release = read_release('.current-release');
 
 if ($action === 'activate') {
-    $release_id = $_POST['release'] ?? '';
+    $release_id = $request['release'] ?? '';
     validate_release($release_id);
 
     if ($current_release !== '' && $current_release !== $release_id) {

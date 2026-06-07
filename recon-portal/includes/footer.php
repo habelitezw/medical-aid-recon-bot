@@ -1,4 +1,4 @@
 </div><!-- .app-layout -->
-<script src="/deployment_asset.php?file=app.js"></script>
+<script src="<?= htmlspecialchars(asset_url('app.js')) ?>"></script>
 </body>
 </html>

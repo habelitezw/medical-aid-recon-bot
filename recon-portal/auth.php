@@ -5,12 +5,39 @@
 
 require_once __DIR__ . '/config.php';
 
+function portal_base_path(): string {
+    $script_name = $_SERVER['SCRIPT_NAME'] ?? '';
+    $base_path = str_replace('\\', '/', dirname($script_name));
+    $base_path = rtrim($base_path, '/');
+
+    if ($base_path === '' || $base_path === '.') {
+        return '';
+    }
+
+    return $base_path === '/' ? '' : $base_path;
+}
+
+function portal_url(string $path = ''): string {
+    $base_path = portal_base_path();
+    $path = ltrim($path, '/');
+
+    if ($path === '') {
+        return $base_path === '' ? '/' : $base_path . '/';
+    }
+
+    return ($base_path === '' ? '' : $base_path) . '/' . $path;
+}
+
+function asset_url(string $file): string {
+    return portal_url('deployment_asset.php?file=' . rawurlencode($file));
+}
+
 function session_init() {
     if (session_status() === PHP_SESSION_NONE) {
         session_name(SESSION_NAME);
         session_set_cookie_params([
             'lifetime' => SESSION_LIFETIME,
-            'path'     => '/',
+            'path'     => portal_base_path() ?: '/',
             'secure'   => isset($_SERVER['HTTPS']),
             'httponly' => true,
             'samesite' => 'Lax',
@@ -26,7 +53,7 @@ function is_logged_in(): bool {
 
 function require_login() {
     if (!is_logged_in()) {
-        header('Location: /login.php');
+        header('Location: ' . portal_url('login.php'));
         exit;
     }
 }
@@ -34,7 +61,7 @@ function require_login() {
 function require_admin() {
     require_login();
     if ($_SESSION['user']['role'] !== 'admin') {
-        header('Location: /dashboard.php?error=access_denied');
+        header('Location: ' . portal_url('dashboard.php?error=access_denied'));
         exit;
     }
 }

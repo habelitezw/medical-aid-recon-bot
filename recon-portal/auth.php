@@ -29,9 +29,9 @@ function portal_url(string $path = ''): string {
 }
 
 function asset_url(string $file): string {
-    $document_root = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT'] ?? ''), '/');
+    $script_dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_FILENAME'] ?? '')), '/');
 
-    if ($document_root !== '' && is_file($document_root . '/deployment_asset.php')) {
+    if ($script_dir !== '' && is_file($script_dir . '/deployment_asset.php')) {
         return portal_url('deployment_asset.php?file=' . rawurlencode($file));
     }
 

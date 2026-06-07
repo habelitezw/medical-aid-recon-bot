@@ -13,26 +13,26 @@ $current  = basename($_SERVER['PHP_SELF']);
   </div>
 
   <nav class="sidebar-nav">
-    <a href="/dashboard.php"
+    <a href="<?= htmlspecialchars(portal_url('dashboard.php')) ?>"
        class="nav-item <?= $current === 'dashboard.php' ? 'active' : '' ?>">
       <span class="nav-icon">⊞</span> Dashboard
     </a>
-    <a href="/run.php"
+    <a href="<?= htmlspecialchars(portal_url('run.php')) ?>"
        class="nav-item <?= $current === 'run.php' ? 'active' : '' ?>">
       <span class="nav-icon">▶</span> Run Reconciliation
     </a>
-    <a href="/history.php"
+    <a href="<?= htmlspecialchars(portal_url('history.php')) ?>"
        class="nav-item <?= $current === 'history.php' ? 'active' : '' ?>">
       <span class="nav-icon">☰</span> History
     </a>
 
     <?php if ($is_admin): ?>
     <div class="nav-section">Admin</div>
-    <a href="/codes.php"
+    <a href="<?= htmlspecialchars(portal_url('codes.php')) ?>"
        class="nav-item <?= $current === 'codes.php' ? 'active' : '' ?>">
       <span class="nav-icon">⚙</span> Reason Codes
     </a>
-    <a href="/users.php"
+    <a href="<?= htmlspecialchars(portal_url('users.php')) ?>"
        class="nav-item <?= $current === 'users.php' ? 'active' : '' ?>">
       <span class="nav-icon">👤</span> Users
     </a>
@@ -40,11 +40,11 @@ $current  = basename($_SERVER['PHP_SELF']);
   </nav>
 
   <div class="sidebar-footer">
-    <a href="/profile.php" class="nav-item">
+    <a href="<?= htmlspecialchars(portal_url('profile.php')) ?>" class="nav-item">
       <span class="nav-icon">◎</span>
       <?= htmlspecialchars($user['name'] ?? 'Profile') ?>
     </a>
-    <a href="/logout.php" class="nav-item nav-logout">
+    <a href="<?= htmlspecialchars(portal_url('logout.php')) ?>" class="nav-item nav-logout">
       <span class="nav-icon">→</span> Sign Out
     </a>
   </div>

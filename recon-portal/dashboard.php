@@ -23,7 +23,7 @@ $recent_runs      = array_slice($runs, 0, 5);
 <div class="main-content">
   <div class="page-header">
     <h1>Welcome back, <?= htmlspecialchars($user['name']) ?></h1>
-    <p>Medical Aid Reconciliation Portal — Overview</p>
+    <p>Medical Aid Reconciliation Portal - Overview</p>
   </div>
 
   <div class="stat-grid">
@@ -49,7 +49,7 @@ $recent_runs      = array_slice($runs, 0, 5);
     <div class="card-title">Recent Reconciliation Runs</div>
     <?php if (empty($recent_runs)): ?>
       <p class="text-muted">No reconciliation runs yet.
-        <a href="/run.php">Run your first reconciliation →</a>
+        <a href="<?= htmlspecialchars(portal_url('run.php')) ?>">Run your first reconciliation →</a>
       </p>
     <?php else: ?>
     <div class="table-wrap">
@@ -77,7 +77,7 @@ $recent_runs      = array_slice($runs, 0, 5);
             <td>$<?= number_format($run['shortfall_total_usd'], 2) ?></td>
             <td><?= $run['error_count'] ?></td>
             <td>
-              <a href="/history.php?download=<?= urlencode($run['id']) ?>"
+              <a href="<?= htmlspecialchars(portal_url('history.php?download=' . urlencode($run['id']))) ?>"
                  class="btn btn-outline btn-sm">Download</a>
             </td>
           </tr>
@@ -86,7 +86,7 @@ $recent_runs      = array_slice($runs, 0, 5);
       </table>
     </div>
     <div class="mt-2">
-      <a href="/history.php" class="btn btn-secondary btn-sm">View All History →</a>
+      <a href="<?= htmlspecialchars(portal_url('history.php')) ?>" class="btn btn-secondary btn-sm">View All History →</a>
     </div>
     <?php endif; ?>
   </div>
@@ -94,11 +94,11 @@ $recent_runs      = array_slice($runs, 0, 5);
   <div class="card">
     <div class="card-title">Quick Actions</div>
     <div class="flex gap-2">
-      <a href="/run.php"     class="btn btn-primary">▶ New Reconciliation</a>
-      <a href="/history.php" class="btn btn-outline">☰ View History</a>
+      <a href="<?= htmlspecialchars(portal_url('run.php')) ?>" class="btn btn-primary">▶ New Reconciliation</a>
+      <a href="<?= htmlspecialchars(portal_url('history.php')) ?>" class="btn btn-outline">☰ View History</a>
       <?php if (is_admin()): ?>
-      <a href="/codes.php"   class="btn btn-outline">⚙ Manage Reason Codes</a>
-      <a href="/users.php"   class="btn btn-outline">👤 Manage Users</a>
+      <a href="<?= htmlspecialchars(portal_url('codes.php')) ?>" class="btn btn-outline">⚙ Manage Reason Codes</a>
+      <a href="<?= htmlspecialchars(portal_url('users.php')) ?>" class="btn btn-outline">👤 Manage Users</a>
       <?php endif; ?>
     </div>
   </div>

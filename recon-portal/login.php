@@ -3,7 +3,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 session_init();
 
-if (is_logged_in()) { header('Location: /dashboard.php'); exit; }
+if (is_logged_in()) { header('Location: ' . portal_url('dashboard.php')); exit; }
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($res['token'])) {
             $_SESSION['token'] = $res['token'];
             $_SESSION['user']  = $res['user'];
-            header('Location: /dashboard.php');
+            header('Location: ' . portal_url('dashboard.php'));
             exit;
         } else {
             $error = $res['error'] ?? 'Login failed. Please try again.';
@@ -31,8 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Sign In — <?= APP_NAME ?></title>
-  <link rel="stylesheet" href="/deployment_asset.php?file=style.css"/>
+  <title>Sign In - <?= APP_NAME ?></title>
+  <link rel="stylesheet" href="<?= htmlspecialchars(asset_url('style.css')) ?>"/>
 </head>
 <body>
 <div class="login-wrap">
@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 
     <p class="text-muted mt-2" style="text-align:center;font-size:0.78rem;">
-      <?= APP_NAME ?> v<?= APP_VERSION ?> — Habelite
+      <?= APP_NAME ?> v<?= APP_VERSION ?> - Habelite
     </p>
   </div>
 </div>

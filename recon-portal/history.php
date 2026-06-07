@@ -32,7 +32,7 @@ $runs    = $history['runs'] ?? [];
       <?= count($runs) ?> run<?= count($runs) !== 1 ? 's' : '' ?> found
     </div>
     <?php if (empty($runs)): ?>
-      <p class="text-muted">No runs yet. <a href="/run.php">Run your first reconciliation →</a></p>
+      <p class="text-muted">No runs yet. <a href="<?= htmlspecialchars(portal_url('run.php')) ?>">Run your first reconciliation →</a></p>
     <?php else: ?>
     <div class="table-wrap">
       <table>
@@ -71,7 +71,7 @@ $runs    = $history['runs'] ?? [];
               <?= htmlspecialchars($run['output_filename']) ?>
             </td>
             <td>
-              <a href="/history.php?download=<?= urlencode($run['id']) ?>"
+              <a href="<?= htmlspecialchars(portal_url('history.php?download=' . urlencode($run['id']))) ?>"
                  class="btn btn-outline btn-sm">↓ Download</a>
             </td>
           </tr>

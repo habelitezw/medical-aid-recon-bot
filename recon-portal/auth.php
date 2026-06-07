@@ -29,7 +29,13 @@ function portal_url(string $path = ''): string {
 }
 
 function asset_url(string $file): string {
-    return portal_url('deployment_asset.php?file=' . rawurlencode($file));
+    $document_root = rtrim(str_replace('\\', '/', $_SERVER['DOCUMENT_ROOT'] ?? ''), '/');
+
+    if ($document_root !== '' && is_file($document_root . '/deployment_asset.php')) {
+        return portal_url('deployment_asset.php?file=' . rawurlencode($file));
+    }
+
+    return portal_url('assets/' . rawurlencode($file));
 }
 
 function session_init() {

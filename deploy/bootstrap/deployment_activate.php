@@ -34,11 +34,88 @@ function validate_release(string $release_id): void {
     }
 
     $release_path = root_path('releases/' . $release_id);
-    foreach (['app.py', 'vendor', 'index.php'] as $required_path) {
+    foreach (['app.py', 'vendor', 'index.php', 'scripts/run_migrations.py'] as $required_path) {
         if (!file_exists($release_path . '/' . $required_path)) {
             fail(400, 'Release package is incomplete.');
         }
     }
+}
+
+function run_command(array $command, string $working_directory, array $environment = []): array {
+    if (!function_exists('proc_open')) {
+        return [
+            'exit_code' => 127,
+            'stdout' => '',
+            'stderr' => 'The PHP proc_open function is unavailable.',
+        ];
+    }
+
+    $descriptor_spec = [
+        0 => ['pipe', 'r'],
+        1 => ['pipe', 'w'],
+        2 => ['pipe', 'w'],
+    ];
+
+    $process_environment = array_merge($_ENV, $environment);
+    $process = @proc_open(
+        $command,
+        $descriptor_spec,
+        $pipes,
+        $working_directory,
+        $process_environment,
+        ['bypass_shell' => true]
+    );
+
+    if (!is_resource($process)) {
+        return [
+            'exit_code' => 127,
+            'stdout' => '',
+            'stderr' => 'Unable to start the migration process.',
+        ];
+    }
+
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[2]);
+
+    return [
+        'exit_code' => proc_close($process),
+        'stdout' => trim((string) $stdout),
+        'stderr' => trim((string) $stderr),
+    ];
+}
+
+function run_release_migrations(string $release_id, array $environment = []): array {
+    $release_path = root_path('releases/' . $release_id);
+    $script_path = $release_path . '/scripts/run_migrations.py';
+    $attempts = [];
+
+    foreach (['python3', 'python'] as $python_binary) {
+        $result = run_command([$python_binary, $script_path], $release_path, $environment);
+        $attempts[] = [
+            'python' => $python_binary,
+            'exit_code' => $result['exit_code'],
+            'stdout' => $result['stdout'],
+            'stderr' => $result['stderr'],
+        ];
+
+        if ($result['exit_code'] === 0) {
+            return [
+                'ok' => true,
+                'python' => $python_binary,
+                'stdout' => $result['stdout'],
+                'stderr' => $result['stderr'],
+                'attempts' => $attempts,
+            ];
+        }
+    }
+
+    return [
+        'ok' => false,
+        'attempts' => $attempts,
+    ];
 }
 
 function request_payload(): array {
@@ -79,9 +156,40 @@ $request = request_payload();
 $action = $request['action'] ?? 'activate';
 $current_release = read_release('.current-release');
 
-if ($action === 'activate') {
+if ($action === 'activate' || $action === 'migrate') {
     $release_id = $request['release'] ?? '';
     validate_release($release_id);
+
+    if ($action === 'migrate') {
+        $migration_environment = [];
+        $bootstrap_test_user_password = $_SERVER['HTTP_X_BOOTSTRAP_TEST_USER_PASSWORD'] ?? '';
+        if ($bootstrap_test_user_password !== '') {
+            $migration_environment['BOOTSTRAP_TEST_USER_PASSWORD'] = $bootstrap_test_user_password;
+        }
+
+        $migration = run_release_migrations($release_id, $migration_environment);
+        if (!$migration['ok']) {
+            http_response_code(500);
+            echo json_encode([
+                'status' => 'error',
+                'action' => $action,
+                'release' => $release_id,
+                'message' => 'Database migrations failed.',
+                'attempts' => $migration['attempts'],
+            ]);
+            exit;
+        }
+
+        echo json_encode([
+            'status' => 'ok',
+            'action' => $action,
+            'release' => $release_id,
+            'python' => $migration['python'],
+            'stdout' => $migration['stdout'],
+            'stderr' => $migration['stderr'],
+        ]);
+        exit;
+    }
 
     if ($current_release !== '' && $current_release !== $release_id) {
         write_release('.previous-release', $current_release);

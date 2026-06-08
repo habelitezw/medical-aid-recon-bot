@@ -56,8 +56,8 @@ jobs:
       - name: Scan Python source
         run: bandit -r . -x ./.git,./deployment,./vendor -ll
 
-  deploy:
-    name: Deploy cPanel Application
+  deploy_release:
+    name: Upload cPanel Release
     needs: validate
     runs-on: ubuntu-latest
     environment: staging
@@ -72,9 +72,8 @@ jobs:
           python-version: '3.11'
           cache: pip
 
-      - name: Validate FTP secrets
+      - name: Validate deployment secrets
         env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
           DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
@@ -82,7 +81,6 @@ jobs:
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
         run: |
           required=(
-            API_BASE_URL
             DEPLOYMENT_TOKEN
             FTP_SERVER
             FTP_USERNAME
@@ -98,7 +96,7 @@ jobs:
           done
 
           if [ "${#missing[@]}" -gt 0 ]; then
-            printf 'Missing required production secrets: %s\n' "${missing[*]}" >&2
+            printf 'Missing required deployment secrets: %s\n' "${missing[*]}" >&2
             exit 1
           fi
 
@@ -164,6 +162,93 @@ jobs:
             tmp/**
             .current-release
             .previous-release
+
+  deploy_db:
+    name: Run Database Migrations
+    needs: deploy_release
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Validate database deployment secrets
+        env:
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+          BOOTSTRAP_TEST_USER_PASSWORD: ${{ secrets.BOOTSTRAP_TEST_USER_PASSWORD }}
+        run: |
+          required=(
+            DEPLOYMENT_TOKEN
+            BOOTSTRAP_TEST_USER_PASSWORD
+          )
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required database deployment secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Run database migrations for uploaded release
+        env:
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+          BOOTSTRAP_TEST_USER_PASSWORD: ${{ secrets.BOOTSTRAP_TEST_USER_PASSWORD }}
+        run: |
+          payload="$(printf '{"action":"migrate","release":"%s"}' "$GITHUB_SHA")"
+          status_code="$(
+            curl \
+              --silent \
+              --show-error \
+              --output /tmp/deployment-migrate-response.txt \
+              --write-out "%{http_code}" \
+              --max-time 120 \
+              --request POST \
+              --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
+              --header "X-Bootstrap-Test-User-Password: $BOOTSTRAP_TEST_USER_PASSWORD" \
+              --header "Content-Type: application/json" \
+              --header "Accept: application/json" \
+              --data "$payload" \
+              "$PORTAL_BASE_URL/deployment_activate.php"
+          )"
+
+          cat /tmp/deployment-migrate-response.txt
+
+          if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
+            echo "Database migrations failed with HTTP $status_code." >&2
+            exit 1
+          fi
+
+  activate_release:
+    name: Activate cPanel Release
+    needs: deploy_db
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Validate activation secrets
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+        run: |
+          required=(
+            API_BASE_URL
+            DEPLOYMENT_TOKEN
+          )
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required activation secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
 
       - name: Activate uploaded release
         env:

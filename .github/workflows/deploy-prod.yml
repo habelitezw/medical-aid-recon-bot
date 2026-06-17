@@ -1,0 +1,139 @@
+name: Deploy To cPanel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate production secrets
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
+          FTP_TARGET_DIR: ${{ secrets.FTP_TARGET_DIR }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+        run: |
+          required=(
+            FTP_SERVER
+            FTP_USERNAME
+            FTP_PASSWORD
+            FTP_PORT
+            FTP_TARGET_DIR
+            API_BASE_URL
+            JWT_SECRET
+            MYSQL_HOST
+            MYSQL_PORT
+            MYSQL_DATABASE
+            MYSQL_USER
+            MYSQL_PASSWORD
+          )
+
+          missing=()
+          for key in "${required[@]}"; do
+            if [ -z "${!key}" ]; then
+              missing+=("$key")
+            fi
+          done
+
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required production secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Generate Python environment file
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          RECON_OUTPUT_DIR: ${{ secrets.RECON_OUTPUT_DIR }}
+          RECON_UPLOAD_DIR: ${{ secrets.RECON_UPLOAD_DIR }}
+        run: |
+          {
+            printf 'DB_BACKEND=mysql\n'
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'MYSQL_HOST=%s\n' "$MYSQL_HOST"
+            printf 'MYSQL_PORT=%s\n' "$MYSQL_PORT"
+            printf 'MYSQL_DATABASE=%s\n' "$MYSQL_DATABASE"
+            printf 'MYSQL_USER=%s\n' "$MYSQL_USER"
+            printf 'MYSQL_PASSWORD=%s\n' "$MYSQL_PASSWORD"
+            if [ -n "$RECON_OUTPUT_DIR" ]; then
+              printf 'RECON_OUTPUT_DIR=%s\n' "$RECON_OUTPUT_DIR"
+            fi
+            if [ -n "$RECON_UPLOAD_DIR" ]; then
+              printf 'RECON_UPLOAD_DIR=%s\n' "$RECON_UPLOAD_DIR"
+            fi
+          } > .env
+
+      - name: Generate PHP portal overrides
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          APP_NAME: ${{ secrets.APP_NAME }}
+          APP_VERSION: ${{ secrets.APP_VERSION }}
+          SESSION_NAME: ${{ secrets.SESSION_NAME }}
+          SESSION_LIFETIME: ${{ secrets.SESSION_LIFETIME }}
+        run: |
+          cat > recon-portal/config.local.php <<PHP
+          <?php
+          return [
+              'API_BASE_URL' => '${API_BASE_URL}',
+              'APP_NAME' => '${APP_NAME:-Medical Aid Reconciliation}',
+              'APP_VERSION' => '${APP_VERSION:-2.0}',
+              'SESSION_NAME' => '${SESSION_NAME:-recon_session}',
+              'SESSION_LIFETIME' => ${SESSION_LIFETIME:-28800},
+          ];
+          PHP
+
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT }}
+          local-dir: ./
+          server-dir: ${{ secrets.FTP_TARGET_DIR }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/.github/**
+            **/.venv/**
+            **/__pycache__/**
+            **/*.pyc
+            uploads/**
+            recon_outputs/**
+            .env.example
+            recon-portal/config.local.php.example
+            DEPLOYMENT-cpanel.md
+
+      - name: Deployment summary
+        run: |
+          cat <<'TEXT'
+          FTP deployment completed.
+
+          First-time cPanel Python setup is still required on the server:
+          1. Create or update the cPanel Python App with app root set to this project directory.
+          2. Use passenger_wsgi.py as the startup file / WSGI entrypoint.
+          3. Install Python packages from requirements.txt in the app virtualenv.
+          4. Restart the Python app in cPanel after deployment.
+          5. Point the web domain document root to recon-portal/.
+          TEXT

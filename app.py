@@ -29,9 +29,10 @@ from db import (db_get_user_by_email, db_get_user_by_id,
                 storage_get_path)
 
 app = Flask(__name__)
+application = app
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+UPLOAD_DIR = os.environ.get("RECON_UPLOAD_DIR", os.path.join(BASE_DIR, "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -506,4 +507,8 @@ def delete_user(user_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=False, host=os.environ.get("HOST", "127.0.0.1"), port=5000)
+    app.run(
+        debug=False,
+        host=os.environ.get("FLASK_RUN_HOST", os.environ.get("HOST", "0.0.0.0")),
+        port=int(os.environ.get("PORT", os.environ.get("FLASK_RUN_PORT", "5000"))),
+    )

@@ -52,6 +52,7 @@ The app reads two deploy-time config files:
 - `recon-portal/config.local.php` for PHP settings
 
 The GitHub Action generates both files from secrets before uploading.
+The PHP deployment bootstrap will try to detect the running Passenger Python interpreter automatically. If you know the exact interpreter path, you can still provide it as `CPANEL_PYTHON_BIN` and it will be written into the release `.env` as `PYTHON_BIN`.
 
 ## Required GitHub Secrets
 
@@ -76,6 +77,7 @@ The GitHub Action generates both files from secrets before uploading.
 - `SESSION_LIFETIME`
 - `RECON_OUTPUT_DIR`
 - `RECON_UPLOAD_DIR`
+- `CPANEL_PYTHON_BIN` - optional override for the absolute path to the cPanel Python app interpreter
 
 ## Local development fallback
 

@@ -121,6 +121,7 @@ jobs:
             exit 1
           fi
 
+
       - name: Prepare deployment package
         env:
           DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
@@ -135,6 +136,7 @@ jobs:
           MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
           MYSQL_USER: ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          CPANEL_PYTHON_BIN: ${{ secrets.CPANEL_PYTHON_BIN }}
           RECON_OUTPUT_DIR: ${{ secrets.RECON_OUTPUT_DIR }}
           RECON_UPLOAD_DIR: ${{ secrets.RECON_UPLOAD_DIR }}
         run: |
@@ -169,6 +171,9 @@ jobs:
             printf 'MYSQL_DATABASE=%s\n' "$MYSQL_DATABASE"
             printf 'MYSQL_USER=%s\n' "$MYSQL_USER"
             printf 'MYSQL_PASSWORD=%s\n' "$MYSQL_PASSWORD"
+            if [ -n "$CPANEL_PYTHON_BIN" ]; then
+              printf 'PYTHON_BIN=%s\n' "$CPANEL_PYTHON_BIN"
+            fi
             if [ -n "$RECON_OUTPUT_DIR" ]; then
               printf 'RECON_OUTPUT_DIR=%s\n' "$RECON_OUTPUT_DIR"
             fi

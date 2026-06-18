@@ -41,6 +41,31 @@ function validate_release(string $release_id): void {
     }
 }
 
+function read_release_environment(string $release_path): array {
+    $environment_path = $release_path . '/.env';
+    if (!is_file($environment_path)) {
+        return [];
+    }
+
+    $lines = @file($environment_path, FILE_IGNORE_NEW_LINES);
+    if ($lines === false) {
+        return [];
+    }
+
+    $values = [];
+    foreach ($lines as $raw_line) {
+        $line = trim($raw_line);
+        if ($line === '' || $line[0] === '#' || strpos($line, '=') === false) {
+            continue;
+        }
+
+        [$key, $value] = explode('=', $line, 2);
+        $values[trim($key)] = trim($value, " \	\n\r\0\x0B\"'");
+    }
+
+    return $values;
+}
+
 function run_command(array $command, string $working_directory, array $environment = []): array {
     if (!function_exists('proc_open')) {
         return [
@@ -87,15 +112,144 @@ function run_command(array $command, string $working_directory, array $environme
     ];
 }
 
+function append_python_candidate(array &$candidates, string $candidate): void {
+    $candidate = trim($candidate);
+    if ($candidate === '' || in_array($candidate, $candidates, true)) {
+        return;
+    }
+
+    $candidates[] = $candidate;
+}
+
+function detect_passenger_python(): array {
+    $bootstrap_wsgi = root_path('passenger_wsgi.py');
+    $result = run_command(['ps', '-eo', 'pid=,args='], root_path());
+    if ($result['exit_code'] !== 0 || $result['stdout'] === '') {
+        return [];
+    }
+
+    $candidates = [];
+    foreach (preg_split('/\\r?\\n/', $result['stdout']) as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+
+        if (strpos($line, $bootstrap_wsgi) === false && strpos($line, 'passenger_wsgi.py') === false) {
+            continue;
+        }
+
+        if (!preg_match('/^(\d+)\s+(.*)$/', $line, $matches)) {
+            continue;
+        }
+
+        $pid = $matches[1];
+        $command = trim($matches[2]);
+        $parts = preg_split('/\s+/', $command);
+        $first = $parts[0] ?? '';
+        if ($first !== '' && $first[0] === '/' && is_file($first)) {
+            append_python_candidate($candidates, $first);
+        }
+
+        $proc_exe = '/proc/' . $pid . '/exe';
+        if (is_link($proc_exe)) {
+            $resolved = @readlink($proc_exe);
+            if (is_string($resolved) && $resolved !== '') {
+                append_python_candidate($candidates, $resolved);
+            }
+        }
+    }
+
+    return $candidates;
+}
+
+function python_candidates(string $release_path): array {
+    $release_environment = read_release_environment($release_path);
+    $candidates = [];
+
+    append_python_candidate($candidates, $release_environment['PYTHON_BIN'] ?? '');
+    append_python_candidate($candidates, $_ENV['PYTHON_BIN'] ?? '');
+    append_python_candidate($candidates, $_SERVER['PYTHON_BIN'] ?? '');
+
+    foreach (detect_passenger_python() as $candidate) {
+        append_python_candidate($candidates, $candidate);
+    }
+
+    append_python_candidate($candidates, 'python3');
+    append_python_candidate($candidates, 'python');
+
+    return $candidates;
+}
+
+function detect_python_version(string $python_binary, string $working_directory, array $environment = []): array {
+    $result = run_command(
+        [
+            $python_binary,
+            '-c',
+            'import sys; print("{}.{}.{}".format(*sys.version_info[:3]))',
+        ],
+        $working_directory,
+        $environment
+    );
+
+    $version = trim($result['stdout']);
+    if (!preg_match('/^\d+\.\d+\.\d+$/', $version)) {
+        $version = '';
+    }
+
+    return [
+        'exit_code' => $result['exit_code'],
+        'stdout' => $result['stdout'],
+        'stderr' => $result['stderr'],
+        'version' => $version,
+    ];
+}
+
+function python_version_supported(string $version): bool {
+    if (!preg_match('/^(\d+)\.(\d+)\.(\d+)$/', $version, $matches)) {
+        return false;
+    }
+
+    $major = (int) $matches[1];
+    $minor = (int) $matches[2];
+    return $major > 3 || ($major === 3 && $minor >= 11);
+}
+
 function run_release_migrations(string $release_id, array $environment = []): array {
     $release_path = root_path('releases/' . $release_id);
     $script_path = $release_path . '/scripts/run_migrations.py';
     $attempts = [];
 
-    foreach (['python3', 'python'] as $python_binary) {
+    foreach (python_candidates($release_path) as $python_binary) {
+        $version_check = detect_python_version($python_binary, $release_path, $environment);
+        if ($version_check['exit_code'] !== 0) {
+            $attempts[] = [
+                'python' => $python_binary,
+                'version' => $version_check['version'],
+                'exit_code' => $version_check['exit_code'],
+                'stdout' => $version_check['stdout'],
+                'stderr' => $version_check['stderr'],
+            ];
+            continue;
+        }
+
+        if (!python_version_supported($version_check['version'])) {
+            $attempts[] = [
+                'python' => $python_binary,
+                'version' => $version_check['version'],
+                'exit_code' => 126,
+                'stdout' => '',
+                'stderr' => sprintf(
+                    'Python 3.11+ is required for this release. Found %s. Configure PYTHON_BIN or ensure Passenger is running with a supported interpreter.',
+                    $version_check['version'] === '' ? 'an unknown version' : $version_check['version']
+                ),
+            ];
+            continue;
+        }
         $result = run_command([$python_binary, $script_path], $release_path, $environment);
         $attempts[] = [
             'python' => $python_binary,
+            'version' => $version_check['version'],
             'exit_code' => $result['exit_code'],
             'stdout' => $result['stdout'],
             'stderr' => $result['stderr'],
@@ -105,6 +259,7 @@ function run_release_migrations(string $release_id, array $environment = []): ar
             return [
                 'ok' => true,
                 'python' => $python_binary,
+                'version' => $version_check['version'],
                 'stdout' => $result['stdout'],
                 'stderr' => $result['stderr'],
                 'attempts' => $attempts,
@@ -185,6 +340,7 @@ if ($action === 'activate' || $action === 'migrate') {
             'action' => $action,
             'release' => $release_id,
             'python' => $migration['python'],
+            'python_version' => $migration['version'],
             'stdout' => $migration['stdout'],
             'stderr' => $migration['stderr'],
         ]);

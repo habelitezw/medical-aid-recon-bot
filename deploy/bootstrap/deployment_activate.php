@@ -121,6 +121,24 @@ function append_python_candidate(array &$candidates, string $candidate): void {
     $candidates[] = $candidate;
 }
 
+function append_python_candidate_matches(array &$candidates, string $pattern): void {
+    if ($pattern === '') {
+        return;
+    }
+
+    $matches = glob($pattern);
+    if ($matches === false) {
+        return;
+    }
+
+    sort($matches, SORT_NATURAL);
+    foreach ($matches as $match) {
+        if (is_file($match) && is_executable($match)) {
+            append_python_candidate($candidates, $match);
+        }
+    }
+}
+
 function detect_passenger_python(): array {
     $bootstrap_wsgi = root_path('passenger_wsgi.py');
     $result = run_command(['ps', '-eo', 'pid=,args='], root_path());
@@ -163,6 +181,46 @@ function detect_passenger_python(): array {
     return $candidates;
 }
 
+function detect_cpanel_python(): array {
+    $candidates = [];
+    $environment_keys = ['VIRTUAL_ENV', 'OPENSHIFT_PYTHON_DIR', 'PYTHON_HOME', 'PYTHONHOME'];
+
+    foreach ($environment_keys as $key) {
+        $value = trim((string) ($_ENV[$key] ?? $_SERVER[$key] ?? ''));
+        if ($value === '') {
+            continue;
+        }
+
+        if (is_dir($value)) {
+            append_python_candidate($candidates, $value . '/bin/python');
+            append_python_candidate($candidates, $value . '/bin/python3');
+        } else {
+            append_python_candidate($candidates, $value);
+        }
+    }
+
+    $home = trim((string) ($_ENV['HOME'] ?? $_SERVER['HOME'] ?? ''));
+    $root = root_path();
+    $real_root = realpath($root);
+    $real_home = $home !== '' ? realpath($home) : false;
+    if ($real_root !== false && $real_home !== false) {
+        $root_relative_to_home = ltrim(str_replace($real_home, '', $real_root), '/');
+        if ($root_relative_to_home !== '' && strpos($root_relative_to_home, '..') === false) {
+            append_python_candidate_matches(
+                $candidates,
+                $real_home . '/virtualenv/' . $root_relative_to_home . '/*/bin/python*'
+            );
+        }
+
+        append_python_candidate_matches(
+            $candidates,
+            $real_home . '/virtualenv/*/*/bin/python*'
+        );
+    }
+
+    return $candidates;
+}
+
 function python_candidates(string $release_path): array {
     $release_environment = read_release_environment($release_path);
     $candidates = [];
@@ -172,6 +230,10 @@ function python_candidates(string $release_path): array {
     append_python_candidate($candidates, $_SERVER['PYTHON_BIN'] ?? '');
 
     foreach (detect_passenger_python() as $candidate) {
+        append_python_candidate($candidates, $candidate);
+    }
+
+    foreach (detect_cpanel_python() as $candidate) {
         append_python_candidate($candidates, $candidate);
     }
 

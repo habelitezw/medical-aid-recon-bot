@@ -52,7 +52,7 @@ The app reads two deploy-time config files:
 - `recon-portal/config.local.php` for PHP settings
 
 The GitHub Action generates both files from secrets before uploading.
-The PHP deployment bootstrap will try to detect the running Passenger Python interpreter automatically. If you know the exact interpreter path, you can still provide it as `CPANEL_PYTHON_BIN` and it will be written into the release `.env` as `PYTHON_BIN`.
+The PHP deployment bootstrap will try to detect the running Passenger Python interpreter automatically, including common cPanel virtualenv layouts under `~/virtualenv/...`. If your host still exposes an older system `python` or `python3`, set `CPANEL_PYTHON_BIN` explicitly so the release `.env` contains `PYTHON_BIN` for migrations.
 
 ## Required GitHub Secrets
 
@@ -60,7 +60,7 @@ The PHP deployment bootstrap will try to detect the running Passenger Python int
 - `FTP_USERNAME`
 - `FTP_PASSWORD`
 - `FTP_PORT`
-- `FTP_TARGET_DIR`
+- `FTP_SERVER_DIR`
 - `API_BASE_URL`
 - `JWT_SECRET`
 - `MYSQL_HOST`
@@ -77,7 +77,7 @@ The PHP deployment bootstrap will try to detect the running Passenger Python int
 - `SESSION_LIFETIME`
 - `RECON_OUTPUT_DIR`
 - `RECON_UPLOAD_DIR`
-- `CPANEL_PYTHON_BIN` - optional override for the absolute path to the cPanel Python app interpreter
+- `CPANEL_PYTHON_BIN` - optional but recommended on hosts with legacy system Python; use the absolute path to the cPanel Python app interpreter, for example `/home/username/virtualenv/medical-aid-recon-bot/3.11/bin/python`
 
 ## Local development fallback
 

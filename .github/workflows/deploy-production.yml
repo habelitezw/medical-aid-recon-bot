@@ -79,6 +79,13 @@ jobs:
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
         run: |
           required=(
             DEPLOYMENT_TOKEN
@@ -86,6 +93,13 @@ jobs:
             FTP_USERNAME
             FTP_PASSWORD
             FTP_SERVER_DIR
+            API_BASE_URL
+            JWT_SECRET
+            MYSQL_HOST
+            MYSQL_PORT
+            MYSQL_DATABASE
+            MYSQL_USER
+            MYSQL_PASSWORD
           )
 
           missing=()
@@ -108,6 +122,20 @@ jobs:
       - name: Prepare deployment package
         env:
           DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          APP_NAME: ${{ secrets.APP_NAME }}
+          APP_VERSION: ${{ secrets.APP_VERSION }}
+          SESSION_NAME: ${{ secrets.SESSION_NAME }}
+          SESSION_LIFETIME: ${{ secrets.SESSION_LIFETIME }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
+          MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
+          MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
+          MYSQL_USER: ${{ secrets.MYSQL_USER }}
+          MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          CPANEL_PYTHON_BIN: ${{ secrets.CPANEL_PYTHON_BIN }}
+          RECON_OUTPUT_DIR: ${{ secrets.RECON_OUTPUT_DIR }}
+          RECON_UPLOAD_DIR: ${{ secrets.RECON_UPLOAD_DIR }}
         run: |
           mkdir -p deployment/release/vendor deployment/bootstrap
           pip install --target deployment/release/vendor -r requirements.txt
@@ -130,6 +158,38 @@ jobs:
           cp deploy/release/.htaccess deployment/release/.htaccess
           rsync -a deploy/bootstrap/ deployment/bootstrap/
           cp passenger_wsgi.py deployment/bootstrap/passenger_wsgi.py
+
+          {
+            printf 'APP_ENV=production\n'
+            printf 'DB_BACKEND=mysql\n'
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'MYSQL_HOST=%s\n' "$MYSQL_HOST"
+            printf 'MYSQL_PORT=%s\n' "$MYSQL_PORT"
+            printf 'MYSQL_DATABASE=%s\n' "$MYSQL_DATABASE"
+            printf 'MYSQL_USER=%s\n' "$MYSQL_USER"
+            printf 'MYSQL_PASSWORD=%s\n' "$MYSQL_PASSWORD"
+            if [ -n "$CPANEL_PYTHON_BIN" ]; then
+              printf 'PYTHON_BIN=%s\n' "$CPANEL_PYTHON_BIN"
+            fi
+            if [ -n "$RECON_OUTPUT_DIR" ]; then
+              printf 'RECON_OUTPUT_DIR=%s\n' "$RECON_OUTPUT_DIR"
+            fi
+            if [ -n "$RECON_UPLOAD_DIR" ]; then
+              printf 'RECON_UPLOAD_DIR=%s\n' "$RECON_UPLOAD_DIR"
+            fi
+          } > deployment/release/.env
+
+          cat > deployment/release/config.local.php <<PHP
+          <?php
+          return [
+              'API_BASE_URL' => '${API_BASE_URL}',
+              'APP_NAME' => '${APP_NAME:-Medical Aid Reconciliation}',
+              'APP_VERSION' => '${APP_VERSION:-2.0}',
+              'SESSION_NAME' => '${SESSION_NAME:-recon_session}',
+              'SESSION_LIFETIME' => ${SESSION_LIFETIME:-28800},
+          ];
+          PHP
+
           encoded_token="$(printf '%s' "$DEPLOYMENT_TOKEN" | base64 | tr -d '\n')"
           printf "<?php\nreturn base64_decode('%s');\n" "$encoded_token" \
             > deployment/bootstrap/deployment_secret.php

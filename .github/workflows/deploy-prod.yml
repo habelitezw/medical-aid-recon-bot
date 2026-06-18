@@ -256,7 +256,7 @@ jobs:
           BOOTSTRAP_TEST_USER_PASSWORD: ${{ secrets.BOOTSTRAP_TEST_USER_PASSWORD }}
         run: |
           payload="$(printf '{"action":"migrate","release":"%s"}' "$GITHUB_SHA")"
-          status_code="$({
+          status_code="$(
             curl \
               --silent \
               --show-error \
@@ -270,7 +270,7 @@ jobs:
               --header "Accept: application/json" \
               --data "$payload" \
               "$PORTAL_BASE_URL/deployment_activate.php"
-          )}"
+          )"
 
           cat /tmp/deployment-migrate-response.txt
 
@@ -313,7 +313,7 @@ jobs:
           DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
         run: |
           payload="$(printf '{"action":"activate","release":"%s"}' "$GITHUB_SHA")"
-          status_code="$({
+          status_code="$(
             curl \
               --silent \
               --show-error \
@@ -326,7 +326,7 @@ jobs:
               --header "Accept: application/json" \
               --data "$payload" \
               "$PORTAL_BASE_URL/deployment_activate.php"
-          )}"
+          )"
 
           cat /tmp/deployment-activate-response.txt
 
@@ -341,7 +341,7 @@ jobs:
         run: |
           rollback() {
             echo "Release verification failed. Restoring previous release." >&2
-            status_code="$({
+            status_code="$(
               curl \
                 --silent \
                 --show-error \
@@ -354,7 +354,7 @@ jobs:
                 --header "Accept: application/json" \
                 --data '{"action":"rollback"}' \
                 "$PORTAL_BASE_URL/deployment_activate.php"
-            )}"
+            )"
 
             cat /tmp/deployment-rollback-response.txt
 
@@ -366,7 +366,7 @@ jobs:
 
           healthy=false
           for attempt in {1..30}; do
-            status_code="$({
+            status_code="$(
               curl \
                 --silent \
                 --show-error \
@@ -374,7 +374,7 @@ jobs:
                 --write-out "%{http_code}" \
                 --max-time 15 \
                 "$API_BASE_URL/api/health"
-            )}"
+            )"
 
             if [ "$status_code" -ge 200 ] && [ "$status_code" -lt 300 ]; then
               cat /tmp/api-health-response.txt

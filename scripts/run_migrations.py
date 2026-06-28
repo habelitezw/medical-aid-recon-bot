@@ -1,12 +1,22 @@
 #!/usr/bin/env python3
 """Run tracked database migrations for the current release."""
 
-from __future__ import annotations
-
 import importlib.util
 import re
 import sys
 from pathlib import Path
+from typing import List, Set
+
+
+MIN_PYTHON = (3, 11)
+
+if sys.version_info < MIN_PYTHON:
+    current = ".".join(str(part) for part in sys.version_info[:3])
+    required = ".".join(str(part) for part in MIN_PYTHON)
+    raise SystemExit(
+        f"Python {required}+ is required for migrations; found {current}. "
+        "Configure PYTHON_BIN or let the deployment bootstrap detect the Passenger interpreter."
+    )
 
 
 RELEASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,7 +30,7 @@ if str(RELEASE_DIR) not in sys.path:
 from config import DB_BACKEND  # noqa: E402
 
 
-def _migration_files(migrations_dir: Path) -> list[Path]:
+def _migration_files(migrations_dir: Path) -> List[Path]:
     pattern = re.compile(r"^\d+_.+\.(sql|py)$")
     return sorted(
         path for path in migrations_dir.iterdir()
@@ -44,7 +54,7 @@ def _ensure_schema_migrations_table(connection) -> None:
         cursor.close()
 
 
-def _applied_versions(connection) -> set[str]:
+def _applied_versions(connection) -> Set[str]:
     cursor = connection.cursor()
     try:
         cursor.execute("SELECT version FROM schema_migrations")

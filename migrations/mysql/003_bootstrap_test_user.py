@@ -1,7 +1,5 @@
 """Ensure the live test user exists with admin access."""
 
-from __future__ import annotations
-
 import os
 
 import bcrypt

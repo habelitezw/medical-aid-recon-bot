@@ -1,13 +1,53 @@
-name: Deploy To cPanel
+name: Deploy Staging
 
 on:
   push:
     branches:
-      - main
+      - staging
   workflow_dispatch:
 
+concurrency:
+  group: staging
+  cancel-in-progress: false
+
 jobs:
+  validate:
+    name: Validate Application
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile Python source
+        run: python -m compileall -q .
+
+      - name: Run Python tests
+        run: python test_member_id.py
+
+      - name: Lint PHP source
+        run: find recon-portal -name '*.php' -print0 | xargs -0 -n1 php -l
+
   deploy:
+    name: Deploy To cPanel
+    needs: validate
     runs-on: ubuntu-latest
     environment: staging
 
@@ -15,13 +55,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate staging secrets
+      - name: Validate deployment secrets
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          FTP_PORT: ${{ secrets.FTP_PORT }}
-          FTP_TARGET_DIR: ${{ secrets.FTP_TARGET_DIR }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
@@ -29,13 +68,13 @@ jobs:
           MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
           MYSQL_USER: ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          CPANEL_PYTHON_BIN: ${{ secrets.CPANEL_PYTHON_BIN }}
         run: |
           required=(
             FTP_SERVER
             FTP_USERNAME
             FTP_PASSWORD
-            FTP_PORT
-            FTP_TARGET_DIR
+            FTP_SERVER_DIR
             API_BASE_URL
             JWT_SECRET
             MYSQL_HOST
@@ -43,6 +82,7 @@ jobs:
             MYSQL_DATABASE
             MYSQL_USER
             MYSQL_PASSWORD
+            CPANEL_PYTHON_BIN
           )
 
           missing=()
@@ -53,22 +93,52 @@ jobs:
           done
 
           if [ "${#missing[@]}" -gt 0 ]; then
-            printf 'Missing required production secrets: %s\n' "${missing[*]}" >&2
+            printf 'Missing required deployment secrets: %s\n' "${missing[*]}" >&2
             exit 1
           fi
 
-      - name: Generate Python environment file
+          if [[ "$FTP_SERVER_DIR" != */ ]]; then
+            echo "FTP_SERVER_DIR must end with a trailing slash." >&2
+            exit 1
+          fi
+
+      - name: Prepare direct deploy package
         env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          APP_NAME: ${{ secrets.APP_NAME }}
+          APP_VERSION: ${{ secrets.APP_VERSION }}
+          SESSION_NAME: ${{ secrets.SESSION_NAME }}
+          SESSION_LIFETIME: ${{ secrets.SESSION_LIFETIME }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
           MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
           MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
           MYSQL_USER: ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          CPANEL_PYTHON_BIN: ${{ secrets.CPANEL_PYTHON_BIN }}
           RECON_OUTPUT_DIR: ${{ secrets.RECON_OUTPUT_DIR }}
           RECON_UPLOAD_DIR: ${{ secrets.RECON_UPLOAD_DIR }}
         run: |
+          rm -rf deployment/app-root
+          mkdir -p deployment/app-root
+
+          rsync -a ./ deployment/app-root/ \
+            --exclude '/.env' \
+            --exclude '/.git/' \
+            --exclude '/.github/' \
+            --exclude '/deployment/' \
+            --exclude '/deploy/' \
+            --exclude '/__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude '/test_*.py' \
+            --exclude '/recon_outputs/' \
+            --exclude '/uploads/'
+
+          mkdir -p deployment/app-root/tmp
+          printf '%s\n' "${GITHUB_SHA}" > deployment/app-root/tmp/restart.txt
+
           {
+            printf 'APP_ENV=production\n'
             printf 'DB_BACKEND=mysql\n'
             printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
             printf 'MYSQL_HOST=%s\n' "$MYSQL_HOST"
@@ -76,23 +146,16 @@ jobs:
             printf 'MYSQL_DATABASE=%s\n' "$MYSQL_DATABASE"
             printf 'MYSQL_USER=%s\n' "$MYSQL_USER"
             printf 'MYSQL_PASSWORD=%s\n' "$MYSQL_PASSWORD"
+            printf 'PYTHON_BIN=%s\n' "$CPANEL_PYTHON_BIN"
             if [ -n "$RECON_OUTPUT_DIR" ]; then
               printf 'RECON_OUTPUT_DIR=%s\n' "$RECON_OUTPUT_DIR"
             fi
             if [ -n "$RECON_UPLOAD_DIR" ]; then
               printf 'RECON_UPLOAD_DIR=%s\n' "$RECON_UPLOAD_DIR"
             fi
-          } > .env
+          } > deployment/app-root/.env
 
-      - name: Generate PHP portal overrides
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          APP_NAME: ${{ secrets.APP_NAME }}
-          APP_VERSION: ${{ secrets.APP_VERSION }}
-          SESSION_NAME: ${{ secrets.SESSION_NAME }}
-          SESSION_LIFETIME: ${{ secrets.SESSION_LIFETIME }}
-        run: |
-          cat > recon-portal/config.local.php <<PHP
+          cat > deployment/app-root/recon-portal/config.local.php <<PHP
           <?php
           return [
               'API_BASE_URL' => '${API_BASE_URL}',
@@ -103,37 +166,25 @@ jobs:
           ];
           PHP
 
-      - name: Deploy via FTP
+      - name: Upload app root via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
-          local-dir: ./
-          server-dir: ${{ secrets.FTP_TARGET_DIR }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          local-dir: ./deployment/app-root/
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          state-name: .ftp-app-root-sync-state.json
           exclude: |
             **/.git*
             **/.git*/**
-            **/.github/**
-            **/.venv/**
-            **/__pycache__/**
-            **/*.pyc
-            uploads/**
-            recon_outputs/**
-            .env.example
-            recon-portal/config.local.php.example
-            DEPLOYMENT-cpanel.md
 
-      - name: Deployment summary
+      - name: Write post-deploy notes
         run: |
-          cat <<'TEXT'
-          FTP deployment completed.
-
-          First-time cPanel Python setup is still required on the server:
-          1. Create or update the cPanel Python App with app root set to this project directory.
-          2. Use passenger_wsgi.py as the startup file / WSGI entrypoint.
-          3. Install Python packages from requirements.txt in the app virtualenv.
-          4. Restart the Python app in cPanel after deployment.
-          5. Point the web domain document root to recon-portal/.
-          TEXT
+          {
+            echo '## Post-deploy steps'
+            echo '- If requirements.txt changed, run Pip Install once in cPanel for this Python app.'
+            echo '- If migrations changed, run scripts/run_migrations.py from the cPanel virtualenv or cPanel Execute python script.'
+            echo '- Restart the Python app if cPanel does not pick up tmp/restart.txt automatically.'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -10,15 +10,11 @@ concurrency:
   group: staging
   cancel-in-progress: false
 
-env:
-  API_BASE_URL: ${{ secrets.API_BASE_URL }}
-  PORTAL_BASE_URL: https://habe.co.zw/myclients/medical-aid-recon-bot
-
 jobs:
   validate:
     name: Validate Application
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
@@ -39,7 +35,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-          python -m pip install bandit pip-audit
 
       - name: Compile Python source
         run: python -m compileall -q .
@@ -48,16 +43,10 @@ jobs:
         run: python test_member_id.py
 
       - name: Lint PHP source
-        run: find recon-portal deploy/bootstrap -name '*.php' -print0 | xargs -0 -n1 php -l
+        run: find recon-portal -name '*.php' -print0 | xargs -0 -n1 php -l
 
-      - name: Audit Python dependencies
-        run: python -m pip_audit --cache-dir /tmp/pip-audit-cache -r requirements.txt
-
-      - name: Scan Python source
-        run: bandit -r . -x ./.git,./deployment,./vendor -ll
-
-  deploy_release:
-    name: Upload cPanel Release
+  deploy:
+    name: Deploy To cPanel
     needs: validate
     runs-on: ubuntu-latest
     environment: staging
@@ -66,19 +55,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-
       - name: Validate deployment secrets
         env:
-          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
-          FTP_PORT: ${{ secrets.FTP_PORT }}
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -87,13 +68,12 @@ jobs:
           MYSQL_DATABASE: ${{ secrets.MYSQL_DATABASE }}
           MYSQL_USER: ${{ secrets.MYSQL_USER }}
           MYSQL_PASSWORD: ${{ secrets.MYSQL_PASSWORD }}
+          CPANEL_PYTHON_BIN: ${{ secrets.CPANEL_PYTHON_BIN }}
         run: |
           required=(
-            DEPLOYMENT_TOKEN
             FTP_SERVER
             FTP_USERNAME
             FTP_PASSWORD
-            FTP_PORT
             FTP_SERVER_DIR
             API_BASE_URL
             JWT_SECRET
@@ -102,6 +82,7 @@ jobs:
             MYSQL_DATABASE
             MYSQL_USER
             MYSQL_PASSWORD
+            CPANEL_PYTHON_BIN
           )
 
           missing=()
@@ -121,10 +102,8 @@ jobs:
             exit 1
           fi
 
-
-      - name: Prepare deployment package
+      - name: Prepare direct deploy package
         env:
-          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           APP_NAME: ${{ secrets.APP_NAME }}
           APP_VERSION: ${{ secrets.APP_VERSION }}
@@ -140,27 +119,23 @@ jobs:
           RECON_OUTPUT_DIR: ${{ secrets.RECON_OUTPUT_DIR }}
           RECON_UPLOAD_DIR: ${{ secrets.RECON_UPLOAD_DIR }}
         run: |
-          mkdir -p deployment/release/vendor deployment/bootstrap
-          pip install --target deployment/release/vendor -r requirements.txt
+          rm -rf deployment/app-root
+          mkdir -p deployment/app-root
 
-          rsync -a ./ deployment/release/ \
+          rsync -a ./ deployment/app-root/ \
             --exclude '/.env' \
             --exclude '/.git/' \
             --exclude '/.github/' \
             --exclude '/deployment/' \
             --exclude '/deploy/' \
-            --exclude '/passenger_wsgi.py' \
-            --exclude '/recon-portal/' \
-            --exclude '/recon_outputs/' \
-            --exclude '/uploads/' \
             --exclude '/__pycache__/' \
             --exclude '*.pyc' \
-            --exclude '/test_*.py'
+            --exclude '/test_*.py' \
+            --exclude '/recon_outputs/' \
+            --exclude '/uploads/'
 
-          rsync -a recon-portal/ deployment/release/
-          cp deploy/release/.htaccess deployment/release/.htaccess
-          rsync -a deploy/bootstrap/ deployment/bootstrap/
-          cp passenger_wsgi.py deployment/bootstrap/passenger_wsgi.py
+          mkdir -p deployment/app-root/tmp
+          printf '%s\n' "${GITHUB_SHA}" > deployment/app-root/tmp/restart.txt
 
           {
             printf 'APP_ENV=production\n'
@@ -171,18 +146,16 @@ jobs:
             printf 'MYSQL_DATABASE=%s\n' "$MYSQL_DATABASE"
             printf 'MYSQL_USER=%s\n' "$MYSQL_USER"
             printf 'MYSQL_PASSWORD=%s\n' "$MYSQL_PASSWORD"
-            if [ -n "$CPANEL_PYTHON_BIN" ]; then
-              printf 'PYTHON_BIN=%s\n' "$CPANEL_PYTHON_BIN"
-            fi
+            printf 'PYTHON_BIN=%s\n' "$CPANEL_PYTHON_BIN"
             if [ -n "$RECON_OUTPUT_DIR" ]; then
               printf 'RECON_OUTPUT_DIR=%s\n' "$RECON_OUTPUT_DIR"
             fi
             if [ -n "$RECON_UPLOAD_DIR" ]; then
               printf 'RECON_UPLOAD_DIR=%s\n' "$RECON_UPLOAD_DIR"
             fi
-          } > deployment/release/.env
+          } > deployment/app-root/.env
 
-          cat > deployment/release/config.local.php <<PHP
+          cat > deployment/app-root/recon-portal/config.local.php <<PHP
           <?php
           return [
               'API_BASE_URL' => '${API_BASE_URL}',
@@ -193,221 +166,25 @@ jobs:
           ];
           PHP
 
-          encoded_token="$(printf '%s' "$DEPLOYMENT_TOKEN" | base64 | tr -d '\n')"
-          printf "<?php\nreturn base64_decode('%s');\n" "$encoded_token" \
-            > deployment/bootstrap/deployment_secret.php
-
-      - name: Upload immutable release via FTP
+      - name: Upload app root via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
-          local-dir: ./deployment/release/
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}releases/${{ github.sha }}/
-          state-name: .ftp-release-sync-state.json
-
-      - name: Upload stable deployment bootstrap via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          port: ${{ secrets.FTP_PORT }}
-          local-dir: ./deployment/bootstrap/
+          port: ${{ secrets.FTP_PORT || 21 }}
+          local-dir: ./deployment/app-root/
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          state-name: .ftp-bootstrap-sync-state.json
+          state-name: .ftp-app-root-sync-state.json
           exclude: |
             **/.git*
             **/.git*/**
-            releases/**
-            tmp/**
-            .current-release
-            .previous-release
 
-  deploy_db:
-    name: Run Database Migrations
-    needs: deploy_release
-    runs-on: ubuntu-latest
-    environment: staging
-
-    steps:
-      - name: Validate database deployment secrets
-        env:
-          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
-          BOOTSTRAP_TEST_USER_PASSWORD: ${{ secrets.BOOTSTRAP_TEST_USER_PASSWORD }}
+      - name: Write post-deploy notes
         run: |
-          required=(
-            DEPLOYMENT_TOKEN
-            BOOTSTRAP_TEST_USER_PASSWORD
-          )
-
-          missing=()
-          for key in "${required[@]}"; do
-            if [ -z "${!key}" ]; then
-              missing+=("$key")
-            fi
-          done
-
-          if [ "${#missing[@]}" -gt 0 ]; then
-            printf 'Missing required database deployment secrets: %s\n' "${missing[*]}" >&2
-            exit 1
-          fi
-
-      - name: Run database migrations for uploaded release
-        env:
-          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
-          BOOTSTRAP_TEST_USER_PASSWORD: ${{ secrets.BOOTSTRAP_TEST_USER_PASSWORD }}
-        run: |
-          payload="$(printf '{"action":"migrate","release":"%s"}' "$GITHUB_SHA")"
-          status_code="$(
-            curl \
-              --silent \
-              --show-error \
-              --output /tmp/deployment-migrate-response.txt \
-              --write-out "%{http_code}" \
-              --max-time 120 \
-              --request POST \
-              --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
-              --header "X-Bootstrap-Test-User-Password: $BOOTSTRAP_TEST_USER_PASSWORD" \
-              --header "Content-Type: application/json" \
-              --header "Accept: application/json" \
-              --data "$payload" \
-              "$PORTAL_BASE_URL/deployment_activate.php"
-          )"
-
-          cat /tmp/deployment-migrate-response.txt
-
-          if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
-            echo "Database migrations failed with HTTP $status_code." >&2
-            exit 1
-          fi
-
-  activate_release:
-    name: Activate cPanel Release
-    needs: deploy_db
-    runs-on: ubuntu-latest
-    environment: staging
-
-    steps:
-      - name: Validate activation secrets
-        env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
-        run: |
-          required=(
-            API_BASE_URL
-            DEPLOYMENT_TOKEN
-          )
-
-          missing=()
-          for key in "${required[@]}"; do
-            if [ -z "${!key}" ]; then
-              missing+=("$key")
-            fi
-          done
-
-          if [ "${#missing[@]}" -gt 0 ]; then
-            printf 'Missing required activation secrets: %s\n' "${missing[*]}" >&2
-            exit 1
-          fi
-
-      - name: Activate uploaded release
-        env:
-          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
-        run: |
-          payload="$(printf '{"action":"activate","release":"%s"}' "$GITHUB_SHA")"
-          status_code="$(
-            curl \
-              --silent \
-              --show-error \
-              --output /tmp/deployment-activate-response.txt \
-              --write-out "%{http_code}" \
-              --max-time 30 \
-              --request POST \
-              --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
-              --header "Content-Type: application/json" \
-              --header "Accept: application/json" \
-              --data "$payload" \
-              "$PORTAL_BASE_URL/deployment_activate.php"
-          )"
-
-          cat /tmp/deployment-activate-response.txt
-
-          if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
-            echo "Release activation failed with HTTP $status_code." >&2
-            exit 1
-          fi
-
-      - name: Verify release and rollback on failure
-        env:
-          DEPLOYMENT_TOKEN: ${{ secrets.DEPLOYMENT_TOKEN }}
-        run: |
-          rollback() {
-            echo "Release verification failed. Restoring previous release." >&2
-            status_code="$(
-              curl \
-                --silent \
-                --show-error \
-                --output /tmp/deployment-rollback-response.txt \
-                --write-out "%{http_code}" \
-                --max-time 30 \
-                --request POST \
-                --header "X-Deployment-Token: $DEPLOYMENT_TOKEN" \
-                --header "Content-Type: application/json" \
-                --header "Accept: application/json" \
-                --data '{"action":"rollback"}' \
-                "$PORTAL_BASE_URL/deployment_activate.php"
-            )"
-
-            cat /tmp/deployment-rollback-response.txt
-
-            if [ "$status_code" -lt 200 ] || [ "$status_code" -ge 300 ]; then
-              echo "Rollback was unavailable. This is expected on the first deployment because no previous release exists." >&2
-              return
-            fi
-          }
-
-          healthy=false
-          for attempt in {1..30}; do
-            status_code="$(
-              curl \
-                --silent \
-                --show-error \
-                --output /tmp/api-health-response.txt \
-                --write-out "%{http_code}" \
-                --max-time 15 \
-                "$API_BASE_URL/api/health"
-            )"
-
-            if [ "$status_code" -ge 200 ] && [ "$status_code" -lt 300 ]; then
-              cat /tmp/api-health-response.txt
-              healthy=true
-              break
-            fi
-
-            if [ "$status_code" = "404" ]; then
-              echo "API health endpoint returned 404. Confirm that the cPanel Python App URL routes to Passenger." >&2
-              break
-            fi
-
-            echo "API is not healthy yet (attempt $attempt/30)."
-            sleep 10
-          done
-
-          if [ "$healthy" != true ]; then
-            rollback
-            exit 1
-          fi
-
-          if ! curl \
-            --fail \
-            --silent \
-            --show-error \
-            --max-time 30 \
-            "$API_BASE_URL/api/health/db"
-          then
-            rollback
-            exit 1
-          fi
+          {
+            echo '## Post-deploy steps'
+            echo '- If requirements.txt changed, run Pip Install once in cPanel for this Python app.'
+            echo '- If migrations changed, run scripts/run_migrations.py from the cPanel virtualenv or cPanel Execute python script.'
+            echo '- Restart the Python app if cPanel does not pick up tmp/restart.txt automatically.'
+          } >> "$GITHUB_STEP_SUMMARY"

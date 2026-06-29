@@ -29,3 +29,8 @@ TestData/
 debug*.py
 recon_outputs/
 diag_new.py
+# Local Python app
+.venv/
+
+# cPanel deploy overrides
+recon-portal/config.local.php

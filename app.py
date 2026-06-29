@@ -29,9 +29,10 @@ from db import (db_get_user_by_email, db_get_user_by_id,
                 storage_get_path)
 
 app = Flask(__name__)
+application = app
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+UPLOAD_DIR = os.environ.get("RECON_UPLOAD_DIR", os.path.join(BASE_DIR, "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -272,7 +273,19 @@ def _cleanup_old_sessions():
 @require_auth
 def run_recon():
     excel_file = request.files.get("excel_file")
-    pdf_files  = request.files.getlist("pdf_files")
+    
+    # Accept pdf_files, pdf_files[], pdf_files[0], pdf_files[1] etc.
+    pdf_files = request.files.getlist("pdf_files")
+    if not pdf_files:
+        # Try indexed keys sent by PHP cURL (pdf_files[0], pdf_files[1]...)
+        pdf_files = []
+        i = 0
+        while True:
+            f = request.files.get(f"pdf_files[{i}]")
+            if f is None:
+                break
+            pdf_files.append(f)
+            i += 1
 
     if not excel_file or excel_file.filename == "":
         return jsonify({"error": "Excel file required"}), 400
@@ -501,4 +514,8 @@ def delete_user(user_id):
 
 
 if __name__ == "__main__":
-    app.run(debug=False, host=os.environ.get("HOST", "127.0.0.1"), port=5000)
+    app.run(
+        debug=False,
+        host=os.environ.get("FLASK_RUN_HOST", os.environ.get("HOST", "127.0.0.1")),
+        port=int(os.environ.get("PORT", os.environ.get("FLASK_RUN_PORT", "5000"))),
+    )

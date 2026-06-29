@@ -1,13 +1,13 @@
-name: Deploy Production
+name: Deploy Staging
 
 on:
   push:
     branches:
-      - main
+      - staging
   workflow_dispatch:
 
 concurrency:
-  group: production
+  group: staging
   cancel-in-progress: false
 
 jobs:

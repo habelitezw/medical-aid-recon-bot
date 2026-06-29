@@ -61,6 +61,7 @@ jobs:
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+          PORTAL_FTP_SERVER_DIR: ${{ secrets.PORTAL_FTP_SERVER_DIR }}
           API_BASE_URL: ${{ secrets.API_BASE_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
@@ -75,6 +76,7 @@ jobs:
             FTP_USERNAME
             FTP_PASSWORD
             FTP_SERVER_DIR
+            PORTAL_FTP_SERVER_DIR
             API_BASE_URL
             JWT_SECRET
             MYSQL_HOST
@@ -102,13 +104,13 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare direct deploy package
+          if [[ "$PORTAL_FTP_SERVER_DIR" != */ ]]; then
+            echo "PORTAL_FTP_SERVER_DIR must end with a trailing slash." >&2
+            exit 1
+          fi
+
+      - name: Prepare Python deploy package
         env:
-          API_BASE_URL: ${{ secrets.API_BASE_URL }}
-          APP_NAME: ${{ secrets.APP_NAME }}
-          APP_VERSION: ${{ secrets.APP_VERSION }}
-          SESSION_NAME: ${{ secrets.SESSION_NAME }}
-          SESSION_LIFETIME: ${{ secrets.SESSION_LIFETIME }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           MYSQL_HOST: ${{ secrets.MYSQL_HOST }}
           MYSQL_PORT: ${{ secrets.MYSQL_PORT }}
@@ -119,23 +121,24 @@ jobs:
           RECON_OUTPUT_DIR: ${{ secrets.RECON_OUTPUT_DIR }}
           RECON_UPLOAD_DIR: ${{ secrets.RECON_UPLOAD_DIR }}
         run: |
-          rm -rf deployment/app-root
-          mkdir -p deployment/app-root
+          rm -rf deployment/python-app-root
+          mkdir -p deployment/python-app-root
 
-          rsync -a ./ deployment/app-root/ \
+          rsync -a ./ deployment/python-app-root/ \
             --exclude '/.env' \
             --exclude '/.git/' \
             --exclude '/.github/' \
             --exclude '/deployment/' \
             --exclude '/deploy/' \
+            --exclude '/recon-portal/' \
             --exclude '/__pycache__/' \
             --exclude '*.pyc' \
             --exclude '/test_*.py' \
             --exclude '/recon_outputs/' \
             --exclude '/uploads/'
 
-          mkdir -p deployment/app-root/tmp
-          printf '%s\n' "${GITHUB_SHA}" > deployment/app-root/tmp/restart.txt
+          mkdir -p deployment/python-app-root/tmp
+          printf '%s\n' "${GITHUB_SHA}" > deployment/python-app-root/tmp/restart.txt
 
           {
             printf 'APP_ENV=production\n'
@@ -153,9 +156,22 @@ jobs:
             if [ -n "$RECON_UPLOAD_DIR" ]; then
               printf 'RECON_UPLOAD_DIR=%s\n' "$RECON_UPLOAD_DIR"
             fi
-          } > deployment/app-root/.env
+          } > deployment/python-app-root/.env
 
-          cat > deployment/app-root/recon-portal/config.local.php <<PHP
+      - name: Prepare PHP portal package
+        env:
+          API_BASE_URL: ${{ secrets.API_BASE_URL }}
+          APP_NAME: ${{ secrets.APP_NAME }}
+          APP_VERSION: ${{ secrets.APP_VERSION }}
+          SESSION_NAME: ${{ secrets.SESSION_NAME }}
+          SESSION_LIFETIME: ${{ secrets.SESSION_LIFETIME }}
+        run: |
+          rm -rf deployment/php-portal
+          mkdir -p deployment/php-portal
+
+          rsync -a recon-portal/ deployment/php-portal/
+
+          cat > deployment/php-portal/config.local.php <<PHP
           <?php
           return [
               'API_BASE_URL' => '${API_BASE_URL}',
@@ -166,16 +182,30 @@ jobs:
           ];
           PHP
 
-      - name: Upload app root via FTP
+      - name: Upload Python app via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_SERVER }}
           username: ${{ secrets.FTP_USERNAME }}
           password: ${{ secrets.FTP_PASSWORD }}
           port: ${{ secrets.FTP_PORT || 21 }}
-          local-dir: ./deployment/app-root/
+          local-dir: ./deployment/python-app-root/
           server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          state-name: .ftp-app-root-sync-state.json
+          state-name: .ftp-python-app-sync-state.json
+          exclude: |
+            **/.git*
+            **/.git*/**
+
+      - name: Upload PHP portal via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          local-dir: ./deployment/php-portal/
+          server-dir: ${{ secrets.PORTAL_FTP_SERVER_DIR }}
+          state-name: .ftp-php-portal-sync-state.json
           exclude: |
             **/.git*
             **/.git*/**
@@ -184,7 +214,9 @@ jobs:
         run: |
           {
             echo '## Post-deploy steps'
-            echo '- If requirements.txt changed, run Pip Install once in cPanel for this Python app.'
-            echo '- If migrations changed, run scripts/run_migrations.py from the cPanel virtualenv or cPanel Execute python script.'
+            echo '- Python app target: '${{ secrets.FTP_SERVER_DIR }}
+            echo '- PHP portal target: '${{ secrets.PORTAL_FTP_SERVER_DIR }}
+            echo '- If requirements.txt changed, run Pip Install once in cPanel for the Python app.'
+            echo '- If migrations changed, run scripts/run_migrations.py in the Python app virtualenv.'
             echo '- Restart the Python app if cPanel does not pick up tmp/restart.txt automatically.'
           } >> "$GITHUB_STEP_SUMMARY"

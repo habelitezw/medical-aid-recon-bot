@@ -273,7 +273,19 @@ def _cleanup_old_sessions():
 @require_auth
 def run_recon():
     excel_file = request.files.get("excel_file")
-    pdf_files  = request.files.getlist("pdf_files")
+    
+    # Accept pdf_files, pdf_files[], pdf_files[0], pdf_files[1] etc.
+    pdf_files = request.files.getlist("pdf_files")
+    if not pdf_files:
+        # Try indexed keys sent by PHP cURL (pdf_files[0], pdf_files[1]...)
+        pdf_files = []
+        i = 0
+        while True:
+            f = request.files.get(f"pdf_files[{i}]")
+            if f is None:
+                break
+            pdf_files.append(f)
+            i += 1
 
     if not excel_file or excel_file.filename == "":
         return jsonify({"error": "Excel file required"}), 400

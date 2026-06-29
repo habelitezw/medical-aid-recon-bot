@@ -1,6 +1,6 @@
 # =============================================================
 # reason_engine.py  —  Loads and applies configurable reason codes
-# Now reads from Supabase database with JSON file as fallback
+# Reads from the configured database, with JSON fallback for local CLI mode.
 # =============================================================
 
 import json

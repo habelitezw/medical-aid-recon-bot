@@ -365,7 +365,7 @@ def run():
     print("=" * 60)
     print("Medical Aid Reconciliation Bot — CLI Mode")
     print("Note: CLI mode writes output locally.")
-    print("      Run history and Supabase storage are NOT updated.")
+    print("      Run history is not updated.")
     print("      Use the web API for full functionality.")
     print("=" * 60)
     run_start = datetime.now()

@@ -54,8 +54,12 @@ if ($status === 301 || $status === 302 || $status === 307 || $status === 308) {
 
 if ($status !== 200) {
     $decoded = json_decode($body, true);
-    $error_msg = $decoded['error'] ?? 'Failed to download file.';
-    die("Error ($status): " . htmlspecialchars($error_msg));
+    $error_msg = $decoded['error'] ?? null;
+    if ($error_msg) {
+        die("Error ($status): " . htmlspecialchars($error_msg));
+    } else {
+        die("Error ($status): Failed to download file.<br><br>Raw response from API:<br><pre>" . htmlspecialchars($body) . "</pre>");
+    }
 }
 
 // Forward content type

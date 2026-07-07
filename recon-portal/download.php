@@ -52,11 +52,13 @@ if ($status === 301 || $status === 302 || $status === 307 || $status === 308) {
     }
 }
 
-if ($status !== 200) {
-    $decoded = json_decode($body, true);
-    $error_msg = $decoded['error'] ?? null;
+// Parse error from body (even on status 200, in case the backend returns 200 with JSON error to bypass LiteSpeed error overrides)
+$decoded = json_decode($body, true);
+$error_msg = $decoded['error'] ?? null;
+
+if ($status !== 200 || $error_msg !== null) {
     if ($error_msg) {
-        die("Error ($status): " . htmlspecialchars($error_msg));
+        die("Error: " . htmlspecialchars($error_msg));
     } else {
         die("Error ($status): Failed to download file.<br><br>Raw response from API:<br><pre>" . htmlspecialchars($body) . "</pre>");
     }

@@ -61,7 +61,7 @@ $runs    = $history['runs'] ?? [];
               <?= htmlspecialchars($run['output_filename']) ?>
             </td>
             <td>
-              <a href="<?= htmlspecialchars(portal_url('download.php?run_id=' . urlencode($run['id']))) ?>"
+              <a href="<?= htmlspecialchars(portal_url('download.php?filename=' . urlencode($run['output_filename']))) ?>"
                  class="btn btn-outline btn-sm">↓ Download</a>
             </td>
           </tr>

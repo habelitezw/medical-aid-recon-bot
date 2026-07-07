@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="stat-label">Errors</div>
       </div>
     </div>
-    <?php $download_url = portal_url('download.php?run_id=' . urlencode($result['run_id'])); ?>
+    <?php $download_url = portal_url('download.php?filename=' . urlencode($result['filename'])); ?>
     <a href="<?= htmlspecialchars($download_url) ?>"
        class="btn btn-success" target="_blank">
       ↓ Download Output File

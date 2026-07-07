@@ -423,10 +423,10 @@ def history_download(run_id):
                          ".spreadsheetml.sheet"
             )
 
-        return jsonify({"error": "File not available"}), 404
+        return jsonify({"error": "File not available"}), 200
     except Exception as e:
         app.logger.exception("Error in download endpoint")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e)}), 200
 
 # ── Reason codes endpoints ────────────────────────────────────
 

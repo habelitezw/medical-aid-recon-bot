@@ -2,7 +2,7 @@
 
 return [
     'API_BASE_URL'      => 'https://example.com/recon-api',
-    'APP_NAME'          => 'Medical Aid Reconciliation',
+    'APP_NAME'          => 'Optex',
     'APP_VERSION'       => '2.0',
     'SESSION_NAME'      => 'recon_session',
     'SESSION_LIFETIME'  => 28800,

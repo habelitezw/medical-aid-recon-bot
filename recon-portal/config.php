@@ -41,7 +41,7 @@ function portal_default_api_base_url(): string {
 }
 
 define('API_BASE_URL', rtrim((string) portal_config_value('API_BASE_URL', portal_default_api_base_url()), '/'));
-define('APP_NAME', (string) portal_config_value('APP_NAME', 'Medical Aid Reconciliation'));
+define('APP_NAME', (string) portal_config_value('APP_NAME', 'Optex'));
 define('APP_VERSION', (string) portal_config_value('APP_VERSION', '2.0'));
 define('SESSION_NAME', (string) portal_config_value('SESSION_NAME', 'recon_session'));
 define('SESSION_LIFETIME', (int) portal_config_value('SESSION_LIFETIME', 28800));

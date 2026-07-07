@@ -67,9 +67,11 @@ def _apply_sql_migration(connection, migration_path: Path) -> None:
     sql = migration_path.read_text(encoding="utf-8")
     cursor = connection.cursor()
     try:
-        for result in cursor.execute(sql, multi=True):
-            if result.with_rows:
-                result.fetchall()
+        statements = [part.strip() for part in sql.split(";") if part.strip()]
+        for statement in statements:
+            cursor.execute(statement)
+            if getattr(cursor, "with_rows", False):
+                cursor.fetchall()
         connection.commit()
     except Exception:
         connection.rollback()

@@ -8,7 +8,7 @@ $current  = basename($_SERVER['PHP_SELF']);
 ?>
 <aside class="sidebar">
   <div class="sidebar-brand">
-    <div class="brand-name">Habelite</div>
+    <div class="brand-name">Optex</div>
     <div class="brand-sub">Medical Aid Recon</div>
   </div>
 

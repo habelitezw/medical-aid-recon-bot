@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <div class="login-wrap">
   <div class="login-card">
     <div class="login-brand">
-      <div class="brand">Habelite</div>
+      <div class="brand">Optex</div>
       <div class="sub">Medical Aid Reconciliation Portal</div>
     </div>
 
@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
 
     <p class="text-muted mt-2" style="text-align:center;font-size:0.78rem;">
-      <?= APP_NAME ?> v<?= APP_VERSION ?> - Habelite
+      <?= APP_NAME ?> v<?= APP_VERSION ?>
     </p>
   </div>
 </div>

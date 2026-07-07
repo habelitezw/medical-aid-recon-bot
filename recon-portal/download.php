@@ -3,90 +3,45 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 require_login();
 
-$run_id = $_GET['run_id'] ?? '';
-if (!$run_id) {
-    die("Run ID is required.");
+$filename = $_GET['filename'] ?? '';
+if (!$filename) {
+    die("Filename is required.");
 }
 
-$url = API_BASE_URL . "/api/history/" . urlencode($run_id) . "/download";
-$ch  = curl_init($url);
-
-$headers = [
-    'Authorization: Bearer ' . get_token(),
-];
-
-$response_headers = [];
-
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT        => 180,
-    CURLOPT_SSL_VERIFYPEER => true,
-    CURLOPT_HTTPHEADER     => $headers,
-    CURLOPT_CUSTOMREQUEST  => 'GET',
-    CURLOPT_HEADERFUNCTION => function($ch, $header_line) use (&$response_headers) {
-        $len = strlen($header_line);
-        $parts = explode(':', $header_line, 2);
-        if (count($parts) === 2) {
-            $key = strtolower(trim($parts[0]));
-            $value = trim($parts[1]);
-            $response_headers[$key] = $value;
-        }
-        return $len;
-    }
-]);
-
-$body   = curl_exec($ch);
-$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$err    = curl_error($ch);
-curl_close($ch);
-
-if ($err) {
-    die("Download error: " . htmlspecialchars($err));
+// 1. Sanitize the filename to prevent directory traversal and restrict to expected patterns
+$filename = basename($filename);
+if (!preg_match('/^RECON_\d{8}_\d{6}_[a-zA-Z0-9_]+\.xlsx$/i', $filename)) {
+    die("Invalid filename format.");
 }
 
-// If the API returned a redirect, forward the redirect to the client browser
-if ($status === 301 || $status === 302 || $status === 307 || $status === 308) {
-    if (isset($response_headers['location'])) {
-        header("Location: " . $response_headers['location']);
-        exit;
-    }
+// 2. Resolve the path to the recon_outputs directory
+$output_dir = getenv('RECON_OUTPUT_DIR');
+if ($output_dir === false || $output_dir === '') {
+    $output_dir = __DIR__ . '/../recon_outputs';
 }
 
-// Parse error from body (even on status 200, in case the backend returns 200 with JSON error to bypass LiteSpeed error overrides)
-$decoded = json_decode($body, true);
-$error_msg = $decoded['error'] ?? null;
+$filepath = rtrim($output_dir, '/') . '/' . $filename;
 
-if ($status !== 200 || $error_msg !== null) {
-    if ($error_msg) {
-        die("Error: " . htmlspecialchars($error_msg));
-    } else {
-        die("Error ($status): Failed to download file.<br><br>Raw response from API:<br><pre>" . htmlspecialchars($body) . "</pre>");
-    }
+// 3. Verify the file exists on disk
+if (!file_exists($filepath)) {
+    die("File not found on disk: " . htmlspecialchars($filename));
 }
 
-// Forward content type
-if (isset($response_headers['content-type'])) {
-    header("Content-Type: " . $response_headers['content-type']);
-} else {
-    header("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-}
+// 4. Send correct headers for Excel spreadsheet download
+header('Content-Description: File Transfer');
+header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+header('Content-Disposition: attachment; filename="' . basename($filepath) . '"');
+header('Expires: 0');
+header('Cache-Control: must-revalidate');
+header('Pragma: public');
+header('Content-Length: ' . filesize($filepath));
 
-// Forward content disposition
-if (isset($response_headers['content-disposition'])) {
-    header("Content-Disposition: " . $response_headers['content-disposition']);
-} else {
-    header("Content-Disposition: attachment; filename=\"recon_output.xlsx\"");
-}
-
-// Forward content length if available
-if (isset($response_headers['content-length'])) {
-    header("Content-Length: " . $response_headers['content-length']);
-}
-
-// Clean any previous output buffering to avoid output corruption
+// Clean any output buffers to prevent file corruption
 if (ob_get_level()) {
     ob_end_clean();
 }
+flush();
 
-echo $body;
+// 5. Stream the file directly
+readfile($filepath);
 exit;

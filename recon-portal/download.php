@@ -1,4 +1,5 @@
 <?php
+set_time_limit(300);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 require_login();

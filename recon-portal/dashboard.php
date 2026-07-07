@@ -23,7 +23,7 @@ $recent_runs      = array_slice($runs, 0, 5);
 <div class="main-content">
   <div class="page-header">
     <h1>Welcome back, <?= htmlspecialchars($user['name']) ?></h1>
-    <p>Medical Aid Reconciliation Portal - Overview</p>
+    <p>Optex Medical Aid Reconciliation Portal - Overview</p>
   </div>
 
   <div class="stat-grid">

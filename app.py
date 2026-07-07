@@ -31,18 +31,7 @@ from db import (db_get_user_by_email, db_get_user_by_id,
 app = Flask(__name__)
 application = app
 
-# Auto-run database migrations on startup for convenience/production updates
-try:
-    import sys
-    from pathlib import Path
-    RELEASE_DIR = Path(__file__).resolve().parent
-    if str(RELEASE_DIR) not in sys.path:
-        sys.path.insert(0, str(RELEASE_DIR))
-    from scripts import run_migrations
-    run_migrations.main()
-except Exception as e:
-    app.logger.error(f"Failed to auto-run migrations on startup: {e}")
-
+# Auto-run database migrations on startup disabled to prevent Passenger WSGI crashes
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.environ.get("RECON_UPLOAD_DIR", os.path.join(BASE_DIR, "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -194,6 +183,20 @@ def db_health():
     except Exception:
         app.logger.exception("Database health check failed")
         return jsonify({"status": "error", "database": "unavailable"}), 503
+
+
+@app.route("/api/health/db-check", methods=["GET"])
+def db_check():
+    try:
+        from db_mysql import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DESCRIBE recon_runs")
+        columns = cur.fetchall()
+        conn.close()
+        return jsonify({"status": "ok", "columns": [c[0] for c in columns]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ── Reconciliation endpoint ───────────────────────────────────

@@ -31,6 +31,18 @@ from db import (db_get_user_by_email, db_get_user_by_id,
 app = Flask(__name__)
 application = app
 
+# Auto-run database migrations on startup for convenience/production updates
+try:
+    import sys
+    from pathlib import Path
+    RELEASE_DIR = Path(__file__).resolve().parent
+    if str(RELEASE_DIR) not in sys.path:
+        sys.path.insert(0, str(RELEASE_DIR))
+    from scripts import run_migrations
+    run_migrations.main()
+except Exception as e:
+    app.logger.error(f"Failed to auto-run migrations on startup: {e}")
+
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.environ.get("RECON_UPLOAD_DIR", os.path.join(BASE_DIR, "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -372,42 +384,46 @@ def history():
 @require_auth
 def history_download(run_id):
     """Stream output file — tries BLOB first, then local filesystem."""
-    from flask import send_file, Response
-    import io
+    try:
+        from flask import send_file, Response
+        import io
 
-    run = db_get_run_by_id(run_id)
-    if not run:
-        return jsonify({"error": "Run not found"}), 404
-    if request.user.get("role") != "admin" and \
-            str(run["user_id"]) != request.user["sub"]:
-        return jsonify({"error": "Access denied"}), 403
+        run = db_get_run_by_id(run_id)
+        if not run:
+            return jsonify({"error": "Run not found"}), 404
+        if request.user.get("role") != "admin" and \
+                str(run["user_id"]) != request.user["sub"]:
+            return jsonify({"error": "Access denied"}), 403
 
-    # Try BLOB storage first
-    blob_data, filename = storage_get_blob(run_id)
-    if blob_data:
-        return send_file(
-            io.BytesIO(blob_data),
-            as_attachment=True,
-            download_name=filename or run["output_filename"],
-            mimetype="application/vnd.openxmlformats-officedocument"
-                     ".spreadsheetml.sheet"
-        )
+        # Try BLOB storage first
+        blob_data, filename = storage_get_blob(run_id)
+        if blob_data:
+            return send_file(
+                io.BytesIO(blob_data),
+                as_attachment=True,
+                download_name=filename or run["output_filename"],
+                mimetype="application/vnd.openxmlformats-officedocument"
+                         ".spreadsheetml.sheet"
+            )
 
-    # Fall back to storage_get_path — returns a local filesystem path or URL.
-    path_or_url = storage_get_path(run["output_filename"])
-    if path_or_url:
-        if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
-            from flask import redirect
-            return redirect(path_or_url)
-        return send_file(
-            path_or_url,
-            as_attachment=True,
-            download_name=run["output_filename"],
-            mimetype="application/vnd.openxmlformats-officedocument"
-                     ".spreadsheetml.sheet"
-        )
+        # Fall back to storage_get_path — returns a local filesystem path or URL.
+        path_or_url = storage_get_path(run["output_filename"])
+        if path_or_url:
+            if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+                from flask import redirect
+                return redirect(path_or_url)
+            return send_file(
+                path_or_url,
+                as_attachment=True,
+                download_name=run["output_filename"],
+                mimetype="application/vnd.openxmlformats-officedocument"
+                         ".spreadsheetml.sheet"
+            )
 
-    return jsonify({"error": "File not available"}), 404
+        return jsonify({"error": "File not available"}), 404
+    except Exception as e:
+        app.logger.exception("Error in download endpoint")
+        return jsonify({"error": str(e)}), 500
 
 # ── Reason codes endpoints ────────────────────────────────────
 

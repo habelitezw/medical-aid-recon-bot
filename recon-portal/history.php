@@ -5,16 +5,6 @@ require_login();
 
 $page_title = 'Run History';
 
-// Handle download redirect
-if (isset($_GET['download'])) {
-    $run_id = $_GET['download'];
-    $res    = api_call("/api/history/{$run_id}/download");
-    if (isset($res['download_url'])) {
-        header('Location: ' . $res['download_url']);
-        exit;
-    }
-}
-
 $history = api_call('/api/history');
 $runs    = $history['runs'] ?? [];
 ?>
@@ -71,7 +61,7 @@ $runs    = $history['runs'] ?? [];
               <?= htmlspecialchars($run['output_filename']) ?>
             </td>
             <td>
-              <a href="<?= htmlspecialchars(portal_url('history.php?download=' . urlencode($run['id']))) ?>"
+              <a href="<?= htmlspecialchars(portal_url('download.php?run_id=' . urlencode($run['id']))) ?>"
                  class="btn btn-outline btn-sm">↓ Download</a>
             </td>
           </tr>

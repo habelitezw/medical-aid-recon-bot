@@ -393,9 +393,12 @@ def history_download(run_id):
                      ".spreadsheetml.sheet"
         )
 
-    # Fall back to storage_get_path — returns a local filesystem path.
+    # Fall back to storage_get_path — returns a local filesystem path or URL.
     path_or_url = storage_get_path(run["output_filename"])
     if path_or_url:
+        if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+            from flask import redirect
+            return redirect(path_or_url)
         return send_file(
             path_or_url,
             as_attachment=True,

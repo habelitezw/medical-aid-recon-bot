@@ -54,7 +54,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       </div>
       <div class="form-group">
         <label>Password</label>
-        <input type="password" name="password" required/>
+        <div class="password-field">
+          <input type="password" name="password" id="password" required
+                 autocomplete="current-password"/>
+          <button type="button" class="password-toggle" id="toggle-password"
+                  aria-label="Show password" aria-pressed="false">
+            Show
+          </button>
+        </div>
       </div>
       <button type="submit" class="btn btn-primary btn-block btn-lg">
         Sign In
@@ -66,5 +73,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </p>
   </div>
 </div>
+
+<script>
+(function () {
+  const passwordInput = document.getElementById('password');
+  const toggleButton = document.getElementById('toggle-password');
+  if (!passwordInput || !toggleButton) return;
+
+  toggleButton.addEventListener('click', function () {
+    const shouldShow = passwordInput.type === 'password';
+    passwordInput.type = shouldShow ? 'text' : 'password';
+    toggleButton.textContent = shouldShow ? 'Hide' : 'Show';
+    toggleButton.setAttribute('aria-label', shouldShow ? 'Hide password' : 'Show password');
+    toggleButton.setAttribute('aria-pressed', shouldShow ? 'true' : 'false');
+  });
+})();
+</script>
 </body>
 </html>

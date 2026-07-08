@@ -324,6 +324,32 @@ textarea {
   transition: border-color 0.15s;
 }
 
+.password-field {
+  position: relative;
+}
+
+.password-field input {
+  padding-right: 4.5rem;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 0.45rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: var(--mid-blue);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+}
+
+.password-toggle:hover {
+  opacity: 0.8;
+}
+
 input:focus,
 select:focus,
 textarea:focus {

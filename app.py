@@ -31,6 +31,7 @@ from db import (db_get_user_by_email, db_get_user_by_id,
 app = Flask(__name__)
 application = app
 
+# Auto-run database migrations on startup disabled to prevent Passenger WSGI crashes
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.environ.get("RECON_UPLOAD_DIR", os.path.join(BASE_DIR, "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -182,6 +183,20 @@ def db_health():
     except Exception:
         app.logger.exception("Database health check failed")
         return jsonify({"status": "error", "database": "unavailable"}), 503
+
+
+@app.route("/api/health/db-check", methods=["GET"])
+def db_check():
+    try:
+        from db_mysql import get_conn
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("DESCRIBE recon_runs")
+        columns = cur.fetchall()
+        conn.close()
+        return jsonify({"status": "ok", "columns": [c[0] for c in columns]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ── Reconciliation endpoint ───────────────────────────────────
@@ -373,27 +388,40 @@ def history():
 @app.route("/api/history/<run_id>/download", methods=["GET"])
 @require_auth
 def history_download(run_id):
-    """Stream output file directly from the local filesystem."""
-    from flask import send_file
+    """Stream output file — tries BLOB first, then local filesystem."""
+    from flask import send_file, Response
+    import io
 
     run = db_get_run_by_id(run_id)
     if not run:
         return jsonify({"error": "Run not found"}), 404
-        
-    if request.user.get("role") != "admin" and str(run["user_id"]) != request.user["sub"]:
+    if request.user.get("role") != "admin" and \
+            str(run["user_id"]) != request.user["sub"]:
         return jsonify({"error": "Access denied"}), 403
 
-    # Fetch directly from the filesystem
+    # Try BLOB storage first
+    blob_data, filename = storage_get_blob(run_id)
+    if blob_data:
+        return send_file(
+            io.BytesIO(blob_data),
+            as_attachment=True,
+            download_name=filename or run["output_filename"],
+            mimetype="application/vnd.openxmlformats-officedocument"
+                     ".spreadsheetml.sheet"
+        )
+
+    # Fall back to storage_get_path — returns a local filesystem path.
     path_or_url = storage_get_path(run["output_filename"])
     if path_or_url:
         return send_file(
             path_or_url,
             as_attachment=True,
             download_name=run["output_filename"],
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mimetype="application/vnd.openxmlformats-officedocument"
+                     ".spreadsheetml.sheet"
         )
 
-    return jsonify({"error": "File not available on server"}), 404
+    return jsonify({"error": "File not available"}), 404
 
 # ── Reason codes endpoints ────────────────────────────────────
 

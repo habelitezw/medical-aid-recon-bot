@@ -1,4 +1,5 @@
 <?php
+set_time_limit(300);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 require_login();
@@ -61,14 +62,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="stat-label">Errors</div>
       </div>
     </div>
-    <a href="<?= htmlspecialchars($result['download_url']) ?>"
+    <?php $download_url = portal_url('download.php?filename=' . urlencode($result['filename'])); ?>
+    <a href="<?= htmlspecialchars($download_url) ?>"
        class="btn btn-success" target="_blank">
       ↓ Download Output File
     </a>
   </div>
   <script>
     // Auto-trigger download
-    window.location.href = <?= json_encode($result['download_url']) ?>;
+    window.location.href = <?= json_encode($download_url) ?>;
   </script>
   <?php endif; ?>
 

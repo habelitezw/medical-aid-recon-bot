@@ -25,7 +25,7 @@ from db import (db_get_user_by_email, db_get_user_by_id,
                 db_get_reason_codes, db_add_reason_code,
                 db_update_reason_code, db_delete_reason_code,
                 db_save_run, db_get_runs, db_get_run_by_id,
-                storage_save, storage_save_blob, storage_get_blob,
+                storage_save,
                 storage_get_path)
 
 app = Flask(__name__)
@@ -331,8 +331,8 @@ def run_recon():
         )
 
         # Store file as BLOB in MySQL
-        if run_record:
-            storage_save_blob(run_record["id"], file_bytes)
+        # if run_record:
+        #     storage_save_blob(run_record["id"], file_bytes)
 
         _cleanup_old_sessions()
 
@@ -370,41 +370,30 @@ def history():
 
 @app.route("/api/history/<run_id>/download", methods=["GET"])
 @require_auth
+@app.route("/api/history/<run_id>/download", methods=["GET"])
+@require_auth
 def history_download(run_id):
-    """Stream output file — tries BLOB first, then local filesystem."""
-    from flask import send_file, Response
-    import io
+    """Stream output file directly from the local filesystem."""
+    from flask import send_file
 
     run = db_get_run_by_id(run_id)
     if not run:
         return jsonify({"error": "Run not found"}), 404
-    if request.user.get("role") != "admin" and \
-            str(run["user_id"]) != request.user["sub"]:
+        
+    if request.user.get("role") != "admin" and str(run["user_id"]) != request.user["sub"]:
         return jsonify({"error": "Access denied"}), 403
 
-    # Try BLOB storage first
-    blob_data, filename = storage_get_blob(run_id)
-    if blob_data:
-        return send_file(
-            io.BytesIO(blob_data),
-            as_attachment=True,
-            download_name=filename or run["output_filename"],
-            mimetype="application/vnd.openxmlformats-officedocument"
-                     ".spreadsheetml.sheet"
-        )
-
-    # Fall back to storage_get_path — returns a local filesystem path.
+    # Fetch directly from the filesystem
     path_or_url = storage_get_path(run["output_filename"])
     if path_or_url:
         return send_file(
             path_or_url,
             as_attachment=True,
             download_name=run["output_filename"],
-            mimetype="application/vnd.openxmlformats-officedocument"
-                     ".spreadsheetml.sheet"
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    return jsonify({"error": "File not available"}), 404
+    return jsonify({"error": "File not available on server"}), 404
 
 # ── Reason codes endpoints ────────────────────────────────────
 

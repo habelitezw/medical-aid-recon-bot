@@ -183,8 +183,7 @@ def db_health():
     except Exception:
         app.logger.exception("Database health check failed")
         return jsonify({"status": "error", "database": "unavailable"}), 503
-
-
+    
 @app.route("/api/health/db-check", methods=["GET"])
 def db_check():
     try:
@@ -385,44 +384,36 @@ def history():
 
 @app.route("/api/history/<run_id>/download", methods=["GET"])
 @require_auth
-@app.route("/api/history/<run_id>/download", methods=["GET"])
-@require_auth
 def history_download(run_id):
-    """Stream output file — tries BLOB first, then local filesystem."""
-    from flask import send_file, Response
-    import io
+    """Stream output file directly from the local filesystem."""
+    try:
+        from flask import send_file
 
-    run = db_get_run_by_id(run_id)
-    if not run:
-        return jsonify({"error": "Run not found"}), 404
-    if request.user.get("role") != "admin" and \
-            str(run["user_id"]) != request.user["sub"]:
-        return jsonify({"error": "Access denied"}), 403
+        run = db_get_run_by_id(run_id)
+        if not run:
+            return jsonify({"error": "Run not found"}), 404
+            
+        if request.user.get("role") != "admin" and str(run["user_id"]) != request.user["sub"]:
+            return jsonify({"error": "Access denied"}), 403
 
-    # Try BLOB storage first
-    blob_data, filename = storage_get_blob(run_id)
-    if blob_data:
-        return send_file(
-            io.BytesIO(blob_data),
-            as_attachment=True,
-            download_name=filename or run["output_filename"],
-            mimetype="application/vnd.openxmlformats-officedocument"
-                     ".spreadsheetml.sheet"
-        )
+        # Fetch directly from the filesystem
+        path_or_url = storage_get_path(run["output_filename"])
+        if path_or_url:
+            if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
+                from flask import redirect
+                return redirect(path_or_url)
+            return send_file(
+                path_or_url,
+                as_attachment=True,
+                download_name=run["output_filename"],
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
-    # Fall back to storage_get_path — returns a local filesystem path.
-    path_or_url = storage_get_path(run["output_filename"])
-    if path_or_url:
-        return send_file(
-            path_or_url,
-            as_attachment=True,
-            download_name=run["output_filename"],
-            mimetype="application/vnd.openxmlformats-officedocument"
-                     ".spreadsheetml.sheet"
-        )
-
-    return jsonify({"error": "File not available"}), 404
-
+        return jsonify({"error": "File not available on server"}), 200
+    except Exception as e:
+        app.logger.exception("Error in download endpoint")
+        return jsonify({"error": str(e)}), 200
+    
 # ── Reason codes endpoints ────────────────────────────────────
 
 @app.route("/api/codes", methods=["GET"])

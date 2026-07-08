@@ -18,7 +18,7 @@ if (!preg_match('/^RECON_\d{8}_\d{6}_[a-zA-Z0-9_]+\.xlsx$/i', $filename)) {
 // 2. Resolve the path to the recon_outputs directory
 $output_dir = getenv('RECON_OUTPUT_DIR');
 if ($output_dir === false || $output_dir === '') {
-    $output_dir = __DIR__ . '/../recon_outputs';
+    $output_dir = __DIR__ . '/../medical-aid-recon-bot-api/recon_outputs';
 }
 
 $filepath = rtrim($output_dir, '/') . '/' . $filename;

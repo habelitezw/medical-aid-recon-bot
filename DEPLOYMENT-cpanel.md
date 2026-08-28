@@ -76,3 +76,8 @@ Use these exact values for the current account:
 
 - `passenger_wsgi.py` now loads the app directly from the cPanel app root.
 - The old release bootstrap files under `deploy/bootstrap/` are no longer part of the active deploy path.
+- `recon-portal/.user.ini` raises PHP's upload limits (`upload_max_filesize`, `post_max_size`, execution/input time)
+  for the reconciliation upload form. It deploys with the rest of `recon-portal/` automatically. It only takes
+  effect if the account runs PHP as FPM/CGI (the current cPanel default) — on the older mod_php/DSO SAPI it's
+  silently ignored, and the same values need setting via `.htaccess` or the MultiPHP INI Editor instead. Changes
+  can take up to 5 minutes to apply (PHP's `user_ini.cache_ttl`).

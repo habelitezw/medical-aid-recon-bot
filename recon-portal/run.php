@@ -1,5 +1,5 @@
 <?php
-set_time_limit(300);
+set_time_limit(600);
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/auth.php';
 require_login();
@@ -7,13 +7,16 @@ require_login();
 $page_title = 'Run Reconciliation';
 $result     = null;
 $error      = '';
+$limits     = upload_limits();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
         // When the request body exceeds post_max_size, PHP silently empties
-        // $_FILES and $_POST — this is the only way to detect that case.
-        $error = 'Upload failed: the files are too large for the server to accept '
-               . '(server limit: ' . ini_get('post_max_size') . '). '
+        // $_FILES and $_POST — the Content-Length header is the only place
+        // left to read how big the attempted upload actually was.
+        $attempted = (int) $_SERVER['CONTENT_LENGTH'];
+        $error = 'Upload failed: you attempted to upload ' . human_filesize($attempted)
+               . ', but the server only accepts up to ' . $limits['total_human'] . ' per submission. '
                . 'Please reduce the file sizes or ask an administrator to raise the upload limit.';
     } elseif (!isset($_FILES['excel_file']) || !isset($_FILES['pdf_files'])) {
         $error = 'Please upload both the Excel file and at least one PDF.';
@@ -82,6 +85,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <div class="card">
     <div class="card-title">Upload Files</div>
+    <p class="text-muted mb-2" style="font-size:0.8rem">
+      Maximum size per file: <strong><?= htmlspecialchars($limits['per_file_human']) ?></strong>
+      &nbsp;·&nbsp; Maximum combined upload: <strong><?= htmlspecialchars($limits['total_human']) ?></strong>
+    </p>
     <form method="POST" enctype="multipart/form-data" id="recon-form">
 
       <div class="form-group">
@@ -94,9 +101,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  accept=".xlsx,.xls" required/>
           <div class="drop-icon">📊</div>
           <div class="drop-label">Click to select or drag and drop</div>
-          <div class="drop-sub">Excel files only (.xlsx, .xls)</div>
+          <div class="drop-sub">Excel files only (.xlsx, .xls) — up to <?= htmlspecialchars($limits['per_file_human']) ?></div>
         </div>
         <div class="file-tags" id="excel-tags"></div>
+        <div class="field-error" id="excel-size-error"></div>
       </div>
 
       <div class="form-group">
@@ -109,16 +117,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  accept=".pdf" multiple required/>
           <div class="drop-icon">📄</div>
           <div class="drop-label">Click to select or drag and drop</div>
-          <div class="drop-sub">PDF files only — select multiple</div>
+          <div class="drop-sub">PDF files only — select multiple, up to <?= htmlspecialchars($limits['per_file_human']) ?> each</div>
         </div>
         <div class="file-tags" id="pdf-tags"></div>
+        <div class="field-error" id="pdf-size-error"></div>
       </div>
+
+      <div class="field-error" id="total-size-error"></div>
 
       <button type="submit" class="btn btn-primary btn-lg" id="run-btn">
         ▶ Run Reconciliation
       </button>
       <div class="spinner" id="spinner">
-        ⏳ Processing — please wait, this may take up to 60 seconds...
+        ⏳ Processing — please wait, this may take a few minutes for larger files...
       </div>
     </form>
   </div>
@@ -146,11 +157,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script>
+  // Real PHP-enforced limits, so client-side checks always match the server.
+  window.UPLOAD_LIMITS = {
+    perFileBytes: <?= (int) $limits['per_file_bytes'] ?>,
+    totalBytes: <?= (int) $limits['total_bytes'] ?>,
+    perFileHuman: <?= json_encode($limits['per_file_human']) ?>,
+    totalHuman: <?= json_encode($limits['total_human']) ?>,
+  };
+</script>
+<script>
 document.addEventListener('DOMContentLoaded', () => {
-  wireDropZone('excel-zone', 'excel-input', 'excel-tags', false);
-  wireDropZone('pdf-zone',   'pdf-input',   'pdf-tags',   true);
+  wireDropZone('excel-zone', 'excel-input', 'excel-tags', false, 'excel-size-error');
+  wireDropZone('pdf-zone',   'pdf-input',   'pdf-tags',   true,  'pdf-size-error');
 
-  document.getElementById('recon-form').addEventListener('submit', () => {
+  document.getElementById('recon-form').addEventListener('submit', (e) => {
+    const excelErr = document.getElementById('excel-size-error');
+    const pdfErr   = document.getElementById('pdf-size-error');
+    const totalOk  = checkTotalUploadSize();
+    const hasFieldError = (excelErr && excelErr.textContent) || (pdfErr && pdfErr.textContent);
+
+    if (!totalOk || hasFieldError) {
+      e.preventDefault();
+      return;
+    }
+
     document.getElementById('run-btn').disabled = true;
     document.getElementById('spinner').classList.add('active');
   });

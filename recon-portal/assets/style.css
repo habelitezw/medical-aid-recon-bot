@@ -21,13 +21,15 @@
   --red: #fce4d6;
   --red-text: #922b21;
   --white: #ffffff;
-  --bg: #f0f4f8;
+  --bg: #e6edf3;
   --border: #e2e8f0;
   --text: #1a202c;
   --text-muted: #718096;
   --sidebar-w: 220px;
   --radius: 10px;
-  --shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  --shadow:
+    8px 8px 16px rgba(184, 197, 209, 0.6),
+    -8px -8px 16px rgba(255, 255, 255, 0.9);
 }
 
 body {
@@ -154,7 +156,7 @@ body {
 
 /* ── Cards ── */
 .card {
-  background: var(--white);
+  background: var(--bg);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 1.5rem;
@@ -179,7 +181,7 @@ body {
 }
 
 .stat-card {
-  background: var(--white);
+  background: var(--bg);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 1.25rem;
@@ -215,27 +217,44 @@ body {
 /* ── Tables ── */
 .table-wrap {
   overflow-x: auto;
+  border-radius: var(--radius);
+  /* Optional soft inner framing for the table container */
+  box-shadow: inset 2px 2px 6px rgba(184, 197, 209, 0.2);
+  background: var(--bg);
 }
 
 table {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.84rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.86rem;
 }
 
 th {
-  background: var(--dark-blue);
-  color: white;
-  padding: 0.6rem 0.75rem;
+  background: var(--light-blue);
+  color: var(--dark-blue);
+  padding: 0.8rem 1rem;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.5px;
+}
+
+/* Round the top corners of the header */
+th:first-child {
+  border-top-left-radius: var(--radius);
+}
+th:last-child {
+  border-top-right-radius: var(--radius);
 }
 
 td {
-  padding: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  transition: background 0.2s ease;
 }
 
 tr:nth-child(even) td {
@@ -243,6 +262,18 @@ tr:nth-child(even) td {
 }
 tr:hover td {
   background: #eef4ff;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* Subtle, soft row highlights */
+tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.3);
+}
+tr:hover td {
+  background: rgba(255, 255, 255, 0.6);
 }
 
 /* ── Badges ── */
@@ -370,25 +401,30 @@ textarea {
   gap: 0.4rem;
   padding: 0.55rem 1.2rem;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
   text-decoration: none;
-  transition:
-    opacity 0.15s,
-    transform 0.1s;
+  transition: all 0.2s ease;
 }
 
 .btn:hover {
-  opacity: 0.88;
+  opacity: 0.95;
+  transform: translateY(-1px);
 }
 .btn:active {
-  transform: scale(0.98);
+  transform: translateY(1px);
+  box-shadow: inset 2px 2px 6px rgba(0, 0, 0, 0.2);
 }
 .btn-primary {
-  background: var(--dark-blue);
+  background: linear-gradient(
+    135deg,
+    var(--mid-blue) 0%,
+    var(--dark-blue) 100%
+  );
   color: white;
+  box-shadow: 4px 4px 10px rgba(31, 78, 121, 0.25);
 }
 .btn-success {
   background: #16a34a;
@@ -453,22 +489,27 @@ textarea {
 
 /* ── Drop zones ── */
 .drop-zone {
-  border: 2px dashed #93c5fd;
-  border-radius: 8px;
-  padding: 1.5rem;
+  border: none;
+  border-radius: 12px;
+  padding: 2rem 1.5rem;
   text-align: center;
   cursor: pointer;
-  transition:
-    border-color 0.2s,
-    background 0.2s;
-  background: #f0f9ff;
+  transition: all 0.3s ease;
+  background: var(--bg);
+  /* Inner shadow creates a recessed "carved out" look */
+  box-shadow:
+    inset 6px 6px 12px rgba(184, 197, 209, 0.6),
+    inset -6px -6px 12px rgba(255, 255, 255, 0.9);
   position: relative;
 }
 
 .drop-zone:hover,
 .drop-zone.drag-over {
-  border-color: var(--mid-blue);
-  background: #e0f0ff;
+  background: var(--bg);
+  /* Deepen the inner shadow on hover/drag */
+  box-shadow:
+    inset 8px 8px 16px rgba(184, 197, 209, 0.75),
+    inset -8px -8px 16px rgba(255, 255, 255, 1);
 }
 
 .drop-zone input[type="file"] {
@@ -524,9 +565,9 @@ textarea {
 }
 
 .login-card {
-  background: white;
+  background: var(--bg);
   border-radius: 16px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow);
   padding: 2.5rem;
   width: 100%;
   max-width: 420px;

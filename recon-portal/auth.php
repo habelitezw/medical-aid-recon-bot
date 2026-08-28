@@ -124,7 +124,68 @@ function api_call(string $endpoint, string $method = 'GET',
     return $decoded;
 }
 
+function upload_error_message(int $code): string {
+    switch ($code) {
+        case UPLOAD_ERR_OK:
+            return 'No error';
+        case UPLOAD_ERR_INI_SIZE:
+            return 'The file is larger than this server allows (upload_max_filesize limit exceeded).';
+        case UPLOAD_ERR_FORM_SIZE:
+            return 'The file is larger than the form allows (MAX_FILE_SIZE limit exceeded).';
+        case UPLOAD_ERR_PARTIAL:
+            return 'The file was only partially uploaded — please try again.';
+        case UPLOAD_ERR_NO_FILE:
+            return 'No file was uploaded.';
+        case UPLOAD_ERR_NO_TMP_DIR:
+            return 'The server has no temporary folder configured for uploads.';
+        case UPLOAD_ERR_CANT_WRITE:
+            return 'The server failed to write the uploaded file to disk.';
+        case UPLOAD_ERR_EXTENSION:
+            return 'A server extension stopped the file upload.';
+        default:
+            return "Unknown upload error (code {$code}).";
+    }
+}
+
 function api_upload(string $endpoint, array $files, array $fields = []): array {
+    // Validate the Excel file before doing anything else — surface the
+    // real PHP upload error instead of silently dropping the field.
+    $excel       = $files['excel_file'] ?? null;
+    $excel_error = $excel['error'] ?? UPLOAD_ERR_NO_FILE;
+    if ($excel === null || $excel_error !== UPLOAD_ERR_OK) {
+        return [
+            'error'   => 'Excel file upload failed: ' . upload_error_message($excel_error),
+            '_status' => 0,
+        ];
+    }
+
+    // Normalise single vs multiple PDF uploads, then validate each one.
+    $pdfs = $files['pdf_files'] ?? ['name' => [], 'tmp_name' => [], 'error' => []];
+    if (!is_array($pdfs['name'])) {
+        $pdfs = array_map(fn($v) => [$v], $pdfs);
+    }
+    $pdf_count = count($pdfs['name']);
+
+    $pdf_errors = [];
+    for ($i = 0; $i < $pdf_count; $i++) {
+        if ($pdfs['error'][$i] !== UPLOAD_ERR_OK) {
+            $label        = $pdfs['name'][$i] !== '' ? $pdfs['name'][$i] : ('PDF #' . ($i + 1));
+            $pdf_errors[] = "{$label} — " . upload_error_message($pdfs['error'][$i]);
+        }
+    }
+    if ($pdf_errors) {
+        return [
+            'error'   => 'PDF upload failed: ' . implode('; ', $pdf_errors),
+            '_status' => 0,
+        ];
+    }
+    if ($pdf_count === 0) {
+        return [
+            'error'   => 'PDF upload failed: ' . upload_error_message(UPLOAD_ERR_NO_FILE),
+            '_status' => 0,
+        ];
+    }
+
     $url  = API_BASE_URL . $endpoint;
     $ch   = curl_init($url);
     $post = [];
@@ -133,32 +194,18 @@ function api_upload(string $endpoint, array $files, array $fields = []): array {
         $post[$key] = $value;
     }
 
-    // Excel file
-    if (isset($files['excel_file']) && $files['excel_file']['error'] === 0) {
-        $post['excel_file'] = new CURLFile(
-            $files['excel_file']['tmp_name'],
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            $files['excel_file']['name']
-        );
-    }
+    $post['excel_file'] = new CURLFile(
+        $excel['tmp_name'],
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        $excel['name']
+    );
 
-    // Multiple PDF files
-    if (isset($files['pdf_files'])) {
-        $pdfs = $files['pdf_files'];
-        // Normalise single vs multiple file uploads
-        if (!is_array($pdfs['name'])) {
-            $pdfs = array_map(fn($v) => [$v], $pdfs);
-        }
-        $count = count($pdfs['name']);
-        for ($i = 0; $i < $count; $i++) {
-            if ($pdfs['error'][$i] === 0) {
-                $post["pdf_files[$i]"] = new CURLFile(
-                    $pdfs['tmp_name'][$i],
-                    'application/pdf',
-                    $pdfs['name'][$i]
-                );
-            }
-        }
+    for ($i = 0; $i < $pdf_count; $i++) {
+        $post["pdf_files[$i]"] = new CURLFile(
+            $pdfs['tmp_name'][$i],
+            'application/pdf',
+            $pdfs['name'][$i]
+        );
     }
 
     curl_setopt_array($ch, [

@@ -9,7 +9,13 @@ $result     = null;
 $error      = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!isset($_FILES['excel_file']) || !isset($_FILES['pdf_files'])) {
+    if (empty($_FILES) && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        // When the request body exceeds post_max_size, PHP silently empties
+        // $_FILES and $_POST — this is the only way to detect that case.
+        $error = 'Upload failed: the files are too large for the server to accept '
+               . '(server limit: ' . ini_get('post_max_size') . '). '
+               . 'Please reduce the file sizes or ask an administrator to raise the upload limit.';
+    } elseif (!isset($_FILES['excel_file']) || !isset($_FILES['pdf_files'])) {
         $error = 'Please upload both the Excel file and at least one PDF.';
     } else {
         $res = api_upload('/api/recon/run', $_FILES);

@@ -294,17 +294,11 @@ def storage_save(file_bytes, filename):
 
 
 def storage_save_blob(run_id, file_bytes):
-    """Store the output file as a BLOB against the run record."""
-    conn = get_conn()
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "UPDATE recon_runs SET output_data=%s WHERE id=%s",
-            (file_bytes, run_id)
-        )
-        conn.commit()
-    finally:
-        conn.close()
+    """
+    (Disabled) Previously stored the output file as a BLOB against the run record.
+    We now rely entirely on the local file system to prevent DB bloat.
+    """
+    pass
 
 
 def storage_get_blob(run_id):

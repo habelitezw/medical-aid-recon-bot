@@ -550,6 +550,15 @@ textarea {
   font-size: 0.75rem;
 }
 
+.field-error {
+  color: var(--red-text);
+  font-size: 0.78rem;
+  margin-top: 0.4rem;
+}
+.field-error:empty {
+  display: none;
+}
+
 /* ── Login page ── */
 .login-wrap {
   min-height: 100vh;

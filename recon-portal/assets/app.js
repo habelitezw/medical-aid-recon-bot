@@ -2,11 +2,51 @@
 // app.js — Optex Recon Portal
 // =============================================================
 
+// ── Byte formatting ──────────────────────────────────────────
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.min(
+    units.length - 1,
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+  );
+  const value = bytes / Math.pow(1024, i);
+  const shown = i === 0 || value >= 10 ? Math.round(value) : value.toFixed(1);
+  return `${shown} ${units[i]}`;
+}
+
+// ── Combined upload size check (mirrors the server's post_max_size) ──
+function checkTotalUploadSize() {
+  const limits = window.UPLOAD_LIMITS;
+  const totalErr = document.getElementById("total-size-error");
+  const runBtn = document.getElementById("run-btn");
+  if (!limits || !limits.totalBytes || !totalErr) return true;
+
+  const excelInput = document.getElementById("excel-input");
+  const pdfInput = document.getElementById("pdf-input");
+  let total = 0;
+  if (excelInput) Array.from(excelInput.files).forEach((f) => (total += f.size));
+  if (pdfInput) Array.from(pdfInput.files).forEach((f) => (total += f.size));
+
+  if (total > limits.totalBytes) {
+    totalErr.textContent =
+      `Combined upload is ${formatBytes(total)}, which exceeds the ` +
+      `${limits.totalHuman} maximum allowed per submission. Remove or split up some files.`;
+    if (runBtn) runBtn.disabled = true;
+    return false;
+  }
+
+  totalErr.textContent = "";
+  if (runBtn) runBtn.disabled = false;
+  return true;
+}
+
 // ── Drop zone wiring ──────────────────────────────────────────
-function wireDropZone(zoneId, inputId, tagId, multiple) {
+function wireDropZone(zoneId, inputId, tagId, multiple, errorId) {
   const zone = document.getElementById(zoneId);
   const input = document.getElementById(inputId);
   const tags = document.getElementById(tagId);
+  const errorEl = errorId ? document.getElementById(errorId) : null;
   if (!zone || !input) return;
 
   function showTags(files) {
@@ -15,12 +55,43 @@ function wireDropZone(zoneId, inputId, tagId, multiple) {
     Array.from(files).forEach((f) => {
       const span = document.createElement("span");
       span.className = "file-tag";
-      span.textContent = f.name;
+      span.textContent = `${f.name} (${formatBytes(f.size)})`;
       tags.appendChild(span);
     });
   }
 
-  input.addEventListener("change", () => showTags(input.files));
+  // Reject any file bigger than the server's per-file limit, reporting
+  // exactly how big it was next to what the server will actually accept.
+  function enforceSizeLimit(files) {
+    const limits = window.UPLOAD_LIMITS;
+    if (!limits || !limits.perFileBytes) return files;
+
+    const oversized = files.filter((f) => f.size > limits.perFileBytes);
+    const accepted = files.filter((f) => f.size <= limits.perFileBytes);
+
+    if (errorEl) {
+      errorEl.textContent = oversized.length
+        ? oversized
+            .map(
+              (f) =>
+                `${f.name} is ${formatBytes(f.size)} — the maximum allowed file size is ${limits.perFileHuman}.`,
+            )
+            .join(" ")
+        : "";
+    }
+    return accepted;
+  }
+
+  function applyFiles(fileList) {
+    const accepted = enforceSizeLimit(Array.from(fileList));
+    const dt = new DataTransfer();
+    accepted.forEach((f) => dt.items.add(f));
+    input.files = dt.files;
+    showTags(input.files);
+    checkTotalUploadSize();
+  }
+
+  input.addEventListener("change", () => applyFiles(input.files));
 
   zone.addEventListener("dragover", (e) => {
     e.preventDefault();
@@ -47,10 +118,7 @@ function wireDropZone(zoneId, inputId, tagId, multiple) {
       );
       return;
     }
-    const dt = new DataTransfer();
-    filtered.forEach((f) => dt.items.add(f));
-    input.files = dt.files;
-    showTags(input.files);
+    applyFiles(filtered);
   });
 }
 

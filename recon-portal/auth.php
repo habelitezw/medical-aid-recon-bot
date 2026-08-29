@@ -124,12 +124,60 @@ function api_call(string $endpoint, string $method = 'GET',
     return $decoded;
 }
 
+// =============================================================
+// Upload size limits — shared by run.php (to show the limits
+// up front) and api_upload() (to explain a rejected upload).
+// =============================================================
+
+function parse_ini_size(string $val): int {
+    $val = trim($val);
+    if ($val === '' || $val === '0') {
+        return 0; // 0 = "no limit" in php.ini terms
+    }
+    $unit = strtolower(substr($val, -1));
+    $num  = (float) $val;
+    switch ($unit) {
+        case 'g':
+            return (int) ($num * 1024 * 1024 * 1024);
+        case 'm':
+            return (int) ($num * 1024 * 1024);
+        case 'k':
+            return (int) ($num * 1024);
+        default:
+            return (int) $val;
+    }
+}
+
+function human_filesize(int $bytes): string {
+    if ($bytes <= 0) {
+        return 'unlimited';
+    }
+    $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    $i     = max(0, min((int) floor(log($bytes, 1024)), count($units) - 1));
+    $value = $bytes / (1024 ** $i);
+    $shown = ($i === 0 || $value >= 10) ? round($value) : round($value, 1);
+    return $shown . ' ' . $units[$i];
+}
+
+function upload_limits(): array {
+    $per_file = parse_ini_size((string) ini_get('upload_max_filesize'));
+    $total    = parse_ini_size((string) ini_get('post_max_size'));
+    return [
+        'per_file_bytes' => $per_file,
+        'total_bytes'    => $total,
+        'per_file_human' => human_filesize($per_file),
+        'total_human'    => human_filesize($total),
+    ];
+}
+
 function upload_error_message(int $code): string {
+    $limits = upload_limits();
     switch ($code) {
         case UPLOAD_ERR_OK:
             return 'No error';
         case UPLOAD_ERR_INI_SIZE:
-            return 'The file is larger than this server allows (upload_max_filesize limit exceeded).';
+            return 'The file is larger than the maximum allowed size of '
+                 . $limits['per_file_human'] . ' per file.';
         case UPLOAD_ERR_FORM_SIZE:
             return 'The file is larger than the form allows (MAX_FILE_SIZE limit exceeded).';
         case UPLOAD_ERR_PARTIAL:
@@ -210,7 +258,7 @@ function api_upload(string $endpoint, array $files, array $fields = []): array {
 
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 180,
+        CURLOPT_TIMEOUT        => 600,
         CURLOPT_POST           => true,
         CURLOPT_POSTFIELDS     => $post,
         CURLOPT_HTTPHEADER     => [
